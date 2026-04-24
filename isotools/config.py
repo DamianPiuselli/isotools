@@ -25,6 +25,20 @@ def _filter_n2_peaks(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _filter_water_h_peaks(df: pd.DataFrame) -> pd.DataFrame:
+    """Water 2H logic: Keep Peak 3."""
+    if "peak_nr" in df.columns:
+        return df[df["peak_nr"] == 3].copy()
+    return df
+
+
+def _filter_water_o_peaks(df: pd.DataFrame) -> pd.DataFrame:
+    """Water 18O logic: Keep Peak 4."""
+    if "peak_nr" in df.columns:
+        return df[df["peak_nr"] == 4].copy()
+    return df
+
+
 # --- Configurations ---
 
 NITROGEN_MAPPING = {
@@ -45,10 +59,44 @@ NITROGEN_MAPPING = {
     "Area 29": "area_29",
 }
 
-# The public object you will use in your scripts
+WATER_H_MAPPING = {
+    "Row": "row",
+    "Identifier 1": "sample_name",
+    "Identifier 2": "sample_id_2",
+    "Peak Nr": "peak_nr",
+    "d 3H2/2H2": "d2h",
+    "Ampl 2": "amp_2",
+    "Area 2": "area_2",
+}
+
+WATER_O_MAPPING = {
+    "Row": "row",
+    "Identifier 1": "sample_name",
+    "Identifier 2": "sample_id_2",
+    "Peak Nr": "peak_nr",
+    "d 18O/16O": "d18o",
+    "Ampl 28": "amp_28",
+    "Area 28": "area_28",
+}
+
+# The public objects
 Nitrogen = SystemConfig(
     name="Nitrogen (N2)",
     target_column="d15n",
     column_mapping=NITROGEN_MAPPING,
     filter_func=_filter_n2_peaks,
+)
+
+Water_H = SystemConfig(
+    name="Water (2H)",
+    target_column="d2h",
+    column_mapping=WATER_H_MAPPING,
+    filter_func=_filter_water_h_peaks,
+)
+
+Water_O = SystemConfig(
+    name="Water (18O)",
+    target_column="d18o",
+    column_mapping=WATER_O_MAPPING,
+    filter_func=_filter_water_o_peaks,
 )

@@ -1,4 +1,5 @@
-from typing import Dict
+import numpy as np
+from typing import Dict, List
 import pandas as pd
 from isotools.models import ReferenceMaterial
 from isotools.utils.kragten import propagate_kragten
@@ -99,6 +100,89 @@ class TwoPointLinear(CalibrationStrategy):
 
         # Also ensure the corrected mean is set using the rigorous calculation (or just slope/intercept)
         # Usually recalculating with slope/intercept is fine for the mean.
+        summary_df[f"corrected_{target_col}"] = (
+            summary_df["mean"] * self.slope
+        ) + self.intercept
+
+        return summary_df
+
+
+class MultiPointLinear(CalibrationStrategy):
+    """
+    Multi-Point Linear Normalization using Ordinary Least Squares (OLS).
+    Useful when 3+ anchor standards are used.
+    """
+
+    def __init__(self):
+        self.anchors_data = []  # List of dicts with raw_mean, raw_sem, true_val, true_unc
+        self.slope = 1.0
+        self.intercept = 0.0
+
+    def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
+        self.anchors_data = []
+        x_raw = []
+        y_true = []
+
+        for name in anchor_stats.index:
+            std = refs[name]
+            raw_mean = anchor_stats.loc[name, "mean"]
+            raw_sem = anchor_stats.loc[name, "sem"]
+            true_val = std.d_true
+            true_unc = std.u_true
+
+            self.anchors_data.append({
+                "name": name,
+                "raw_mean": raw_mean,
+                "raw_sem": raw_sem,
+                "true_val": true_val,
+                "true_unc": true_unc
+            })
+            x_raw.append(raw_mean)
+            y_true.append(true_val)
+
+        if len(x_raw) < 2:
+            raise ValueError("MultiPointLinear requires at least 2 anchor standards.")
+
+        # OLS fit: y_true = m * x_raw + b
+        self.slope, self.intercept = np.polyfit(x_raw, y_true, 1)
+
+    def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
+        df = df.copy()
+        df[f"corrected_{target_col}"] = (df[target_col] * self.slope) + self.intercept
+        return df
+
+    def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
+        results = []
+
+        # Parameters for Kragten: [R_samp, R1, T1, R2, T2, ..., Rn, Tn]
+        params = []
+        uncertainties = []
+        for anchor in self.anchors_data:
+            params.extend([anchor["raw_mean"], anchor["true_val"]])
+            uncertainties.extend([anchor["raw_sem"], anchor["true_unc"]])
+
+        def prediction_model(args):
+            r_s = args[0]
+            anchors = args[1:]
+            x = anchors[0::2]
+            y = anchors[1::2]
+            # Re-fit OLS inside Kragten for perturbation
+            m, b = np.polyfit(x, y, 1)
+            return (r_s * m) + b
+
+        for idx, row in summary_df.iterrows():
+            r_samp = row["mean"]
+            u_samp = row["sem"]
+
+            _, unc = propagate_kragten(
+                model_func=prediction_model,
+                params=[r_samp] + params,
+                uncertainties=[u_samp] + uncertainties,
+            )
+            results.append(unc)
+
+        summary_df = summary_df.copy()
+        summary_df["combined_uncertainty"] = results
         summary_df[f"corrected_{target_col}"] = (
             summary_df["mean"] * self.slope
         ) + self.intercept

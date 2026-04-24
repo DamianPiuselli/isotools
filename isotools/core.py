@@ -13,14 +13,14 @@ class Batch:
     Manages the lifecycle of data from Raw -> Cleaned -> Calibrated -> Reported.
     """
 
-    def __init__(self, filepath: str, config: SystemConfig):
+    def __init__(self, filepath: str, config: SystemConfig, sheet_name: int | str = 0):
         self.config = config
         self.filepath = filepath
 
         # 1. Load the Raw Data (Replicates Table)
         # We add an 'excluded' flag column immediately
         reader = IsodatReader(config)
-        self.replicates = reader.read(filepath)
+        self.replicates = reader.read(filepath, sheet_name=sheet_name)
         self.replicates["excluded"] = False
 
         # 2. State Containers
