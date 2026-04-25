@@ -28,9 +28,10 @@ def test_two_point_fit_logic():
     strategy = TwoPointLinear()
     strategy.fit(stats, refs)
 
-    # 4. Check Parameters
+    # 4. Check Parameters (Instrument Fit: Raw = m * True + b)
+    # Raw = 1.0 * True + 10.0
     assert strategy.slope == pytest.approx(1.0)
-    assert strategy.intercept == pytest.approx(-10.0)
+    assert strategy.intercept == pytest.approx(10.0)
 
 
 def test_kragten_propagation_structure():

@@ -51,16 +51,16 @@ class TwoPointLinear(CalibrationStrategy):
         self.t2 = refs[name2].d_true
         self.u_t2 = refs[name2].u_true
 
-        # 3. Calculate Nominal Slope/Intercept
-        # m = (t2 - t1) / (r2 - r1)
-        self.slope = (self.t2 - self.t1) / (self.r2 - self.r1)
-        self.intercept = self.t1 - (self.slope * self.r1)
+        # 3. Calculate Nominal Slope/Intercept (Instrument Fit: Raw = m * True + b)
+        # m = (r2 - r1) / (t2 - t1)
+        self.slope = (self.r2 - self.r1) / (self.t2 - self.t1)
+        self.intercept = self.r1 - (self.slope * self.t1)
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """Vectorized correction for raw data visualization."""
         df = df.copy()
-        # y = mx + b
-        df[f"corrected_{target_col}"] = (df[target_col] * self.slope) + self.intercept
+        # Rearranged from Raw = m * True + b -> True = (Raw - b) / m
+        df[f"corrected_{target_col}"] = (df[target_col] - self.intercept) / self.slope
         return df
 
     def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
@@ -84,9 +84,9 @@ class TwoPointLinear(CalibrationStrategy):
             # Define the equation f(args) -> true_delta
             def prediction_model(args):
                 r_s, r1, r2, t1, t2 = args
-                m = (t2 - t1) / (r2 - r1)
-                b = t1 - (m * r1)
-                return (r_s * m) + b
+                m = (r2 - r1) / (t2 - t1)
+                b = r1 - (m * t1)
+                return (r_s - b) / m
 
             _, unc = propagate_kragten(
                 model_func=prediction_model,
@@ -101,8 +101,8 @@ class TwoPointLinear(CalibrationStrategy):
         # Also ensure the corrected mean is set using the rigorous calculation (or just slope/intercept)
         # Usually recalculating with slope/intercept is fine for the mean.
         summary_df[f"corrected_{target_col}"] = (
-            summary_df["mean"] * self.slope
-        ) + self.intercept
+            summary_df["mean"] - self.intercept
+        ) / self.slope
 
         return summary_df
 
@@ -143,12 +143,14 @@ class MultiPointLinear(CalibrationStrategy):
         if len(x_raw) < 2:
             raise ValueError("MultiPointLinear requires at least 2 anchor standards.")
 
-        # OLS fit: y_true = m * x_raw + b
-        self.slope, self.intercept = np.polyfit(x_raw, y_true, 1)
+        # OLS fit (Instrument Fit: Raw = m * True + b)
+        # Note: polyfit(x, y) -> x=y_true (independent), y=x_raw (dependent)
+        self.slope, self.intercept = np.polyfit(y_true, x_raw, 1)
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         df = df.copy()
-        df[f"corrected_{target_col}"] = (df[target_col] * self.slope) + self.intercept
+        # True = (Raw - b) / m
+        df[f"corrected_{target_col}"] = (df[target_col] - self.intercept) / self.slope
         return df
 
     def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
@@ -164,11 +166,12 @@ class MultiPointLinear(CalibrationStrategy):
         def prediction_model(args):
             r_s = args[0]
             anchors = args[1:]
-            x = anchors[0::2]
-            y = anchors[1::2]
+            x_raw_anchors = anchors[0::2]
+            y_true_anchors = anchors[1::2]
             # Re-fit OLS inside Kragten for perturbation
-            m, b = np.polyfit(x, y, 1)
-            return (r_s * m) + b
+            # Raw = m * True + b
+            m, b = np.polyfit(y_true_anchors, x_raw_anchors, 1)
+            return (r_s - b) / m
 
         for idx, row in summary_df.iterrows():
             r_samp = row["mean"]
@@ -184,7 +187,7 @@ class MultiPointLinear(CalibrationStrategy):
         summary_df = summary_df.copy()
         summary_df["combined_uncertainty"] = results
         summary_df[f"corrected_{target_col}"] = (
-            summary_df["mean"] * self.slope
-        ) + self.intercept
+            summary_df["mean"] - self.intercept
+        ) / self.slope
 
         return summary_df

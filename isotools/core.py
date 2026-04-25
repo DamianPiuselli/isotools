@@ -229,11 +229,11 @@ class Batch:
         if ax is None:
             fig, ax = plt.subplots(figsize=(8, 6))
 
-        # 2. Scatter Individual Replicates
+        # 2. Scatter Individual Replicates (True on X, Measured on Y)
         sns.scatterplot(
             data=anchor_data,
-            x=self.config.target_column,
-            y="d_true",
+            x="d_true",
+            y=self.config.target_column,
             hue="sample_name",
             ax=ax,
             s=60,
@@ -241,19 +241,19 @@ class Batch:
             zorder=3
         )
 
-        # 3. Draw the Calibration Line
-        # We draw it across the range of anchors
-        x_min, x_max = anchor_data[self.config.target_column].min(), anchor_data[self.config.target_column].max()
+        # 3. Draw the Calibration Line (Instrument Fit: Raw = m * True + b)
+        # We draw it across the range of true values
+        t_min, t_max = anchor_data["d_true"].min(), anchor_data["d_true"].max()
         # Add some padding
-        pad = (x_max - x_min) * 0.1 if x_max != x_min else 1.0
-        x_line = np.linspace(x_min - pad, x_max + pad, 100)
+        pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
+        t_line = np.linspace(t_min - pad, t_max + pad, 100)
         
-        synthetic_df = pd.DataFrame({self.config.target_column: x_line})
-        corrected_df = self._strategy.apply(synthetic_df, self.config.target_column)
+        # Raw = m * True + b
+        y_line = (t_line * self._strategy.slope) + self._strategy.intercept
         
         ax.plot(
-            x_line, 
-            corrected_df[f"corrected_{self.config.target_column}"], 
+            t_line, 
+            y_line, 
             color='black', 
             linestyle='--', 
             label='Calibration Line',
@@ -261,8 +261,8 @@ class Batch:
         )
 
         ax.set_title(f"Calibration Curve: {self.config.name}")
-        ax.set_xlabel(f"Measured {self.config.target_column}")
-        ax.set_ylabel("Reference Value (True)")
+        ax.set_xlabel("Reference Value (True)")
+        ax.set_ylabel(f"Measured {self.config.target_column}")
         ax.legend()
         ax.grid(True, linestyle=':', alpha=0.6)
 
