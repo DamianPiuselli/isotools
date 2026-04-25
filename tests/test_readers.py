@@ -60,3 +60,15 @@ def test_manual_row_exclusion(mock_read_excel, mock_config):
 
     assert len(df) == 2
     assert 2 not in df["row"].values
+
+
+@patch("pandas.read_excel")
+def test_reader_validation_fails_on_missing_columns(mock_read_excel, mock_config):
+    """Test that reading fails if mapped columns are missing."""
+    # Mock data missing "Raw Name"
+    raw_data = {"Raw Val": [10], "Row": [1]}
+    mock_read_excel.return_value = pd.DataFrame(raw_data)
+
+    reader = IsodatReader(mock_config)
+    with pytest.raises(ValueError, match="Missing expected columns"):
+        reader.read("missing_cols.xls")

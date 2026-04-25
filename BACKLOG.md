@@ -6,7 +6,7 @@
     - Update `apply_drift_correction` and `process` to use this new column.
 - [x] **Task 2: Centralize Name Resolution**
     - Implement `Batch._get_canonical_name(raw_name)` to unify standard identification across `check_drift`, `plot_drift`, `process`, and `plot_calibration`.
-- [ ] **Task 3: Ingestion Validation**
+- [x] **Task 3: Ingestion Validation**
     - Enhance `IsodatReader` to validate that all mapped columns exist in the raw file.
     - Provide clear error messages/warnings for missing data.
 

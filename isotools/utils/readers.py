@@ -30,17 +30,26 @@ class IsodatReader:
         # Isodat often outputs "Ampl  28" with two spaces.
         df.columns = df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
 
-        # 3. Rename Columns using Config
+        # 3. Validate Columns
+        # Check that ALL columns defined in the config mapping are present
+        missing_cols = [c for c in self.config.column_mapping if c not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing expected columns in '{filepath}': {missing_cols}. "
+                f"Please check your Isodat export template or SystemConfig mapping."
+            )
+
+        # 4. Rename Columns using Config
         df = df.rename(columns=self.config.column_mapping)
 
-        # 4. Standardize Sample Names (String cleanup)
+        # 5. Standardize Sample Names (String cleanup)
         if "sample_name" in df.columns:
             df["sample_name"] = df["sample_name"].astype(str).str.strip()
 
-        # 5. Apply System Filtering (e.g. Keep only Peak 2 for N2)
+        # 6. Apply System Filtering (e.g. Keep only Peak 2 for N2)
         df = self.config.filter_func(df)
 
-        # 6. Apply User Exclusions (Manual Row IDs)
+        # 7. Apply User Exclusions (Manual Row IDs)
         # Assumes 'row' column exists from Isodat mapping
         if exclude_rows and "row" in df.columns:
             df = df[~df["row"].isin(exclude_rows)]
