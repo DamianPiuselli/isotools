@@ -333,8 +333,24 @@ class Batch:
         )
 
         # E. Aggregate to Summary (Sample Level)
-        # We must use the newly created corrected column for the final mean
-        self._summary = self.replicates[~self.replicates["excluded"]].groupby("sample_name")[
+        # We group by canonical name for standards, but keep raw names for unknowns
+        summary_data = self.replicates[~self.replicates["excluded"]].copy()
+        
+        def get_group_name(raw_name):
+            # Check Anchors first
+            can_name = self._get_canonical_name(raw_name, self.anchors)
+            if can_name:
+                return can_name
+            # Then Controls
+            can_name = self._get_canonical_name(raw_name, self.controls)
+            if can_name:
+                return can_name
+            # Fallback to raw name
+            return raw_name
+
+        summary_data["group_name"] = summary_data["sample_name"].apply(get_group_name)
+        
+        self._summary = summary_data.groupby("group_name")[
             "working_value"
         ].agg(["mean", "sem", "count"])
 
