@@ -2,6 +2,7 @@
 from unittest.mock import patch
 import pandas as pd
 import pytest
+import os
 from isotools.core import Batch
 from isotools.config import Nitrogen
 from isotools.strategies import TwoPointLinear
@@ -132,3 +133,21 @@ def test_batch_precision_override(mock_read):
     
     assert sem_overridden == pytest.approx(1.4 / np.sqrt(2))
     assert unc_overridden > unc_empirical
+
+
+@patch("isotools.utils.readers.pd.read_excel")
+def test_batch_save_report(mock_read, mock_isodat_file, tmp_path):
+    """Test that save_report creates an Excel file."""
+    mock_read.return_value = mock_isodat_file
+    batch = Batch("dummy.xls", config=Nitrogen)
+    batch.set_anchors(["USGS32", "USGS34"])
+    batch.process(TwoPointLinear())
+
+    report_path = tmp_path / "test_report.xlsx"
+    batch.save_report(str(report_path))
+
+    assert os.path.exists(report_path)
+    # Verify we can read it back
+    xls = pd.ExcelFile(report_path)
+    assert "Results" in xls.sheet_names
+    assert "Parameters" in xls.sheet_names

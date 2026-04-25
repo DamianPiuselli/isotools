@@ -400,3 +400,36 @@ class Batch:
                 "Within_Unc",
             ]
         ]
+
+    def save_report(self, filepath: str):
+        """
+        Exports the Results and QAQC tables to a multi-sheet Excel file.
+        """
+        if self._summary is None:
+            raise RuntimeError("Run .process() before exporting the report.")
+
+        with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
+            # 1. Results Sheet
+            self.report.to_excel(writer, sheet_name="Results")
+
+            # 2. QAQC Sheet
+            qaqc_df = self.qaqc
+            if not qaqc_df.empty:
+                qaqc_df.to_excel(writer, sheet_name="QAQC")
+
+            # 3. Parameters/Metadata Sheet
+            params = {
+                "System": self.config.name,
+                "Strategy": self._strategy.__class__.__name__ if self._strategy else "None",
+                "Target Column": self.config.target_column,
+                "Filepath": self.filepath,
+                "Anchors": ", ".join(self.anchors.keys()),
+                "Controls": ", ".join(self.controls.keys()),
+                "Drift Monitors": ", ".join(self.drift_monitors.keys()),
+            }
+            if self._strategy:
+                # Add fit parameters if available
+                params["Slope"] = getattr(self._strategy, "slope", "N/A")
+                params["Intercept"] = getattr(self._strategy, "intercept", "N/A")
+
+            pd.Series(params).to_frame("Value").to_excel(writer, sheet_name="Parameters")

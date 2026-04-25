@@ -70,5 +70,5 @@ def test_reader_validation_fails_on_missing_columns(mock_read_excel, mock_config
     mock_read_excel.return_value = pd.DataFrame(raw_data)
 
     reader = IsodatReader(mock_config)
-    with pytest.raises(ValueError, match="Missing expected columns"):
+    with pytest.raises(ValueError, match="Missing ESSENTIAL columns"):
         reader.read("missing_cols.xls")

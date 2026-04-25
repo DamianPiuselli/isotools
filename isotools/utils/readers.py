@@ -1,4 +1,5 @@
 from typing import List, Optional
+import warnings
 import pandas as pd
 from isotools.config import SystemConfig
 
@@ -31,12 +32,29 @@ class IsodatReader:
         df.columns = df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
 
         # 3. Validate Columns
-        # Check that ALL columns defined in the config mapping are present
-        missing_cols = [c for c in self.config.column_mapping if c not in df.columns]
-        if missing_cols:
+        # We distinguish between 'Essential' (required for logic) and 'Optional' (contextual)
+        essential_internal_names = ["sample_name", "row", "peak_nr", self.config.target_column]
+        
+        missing_essential = []
+        missing_optional = []
+
+        for raw_col, internal_name in self.config.column_mapping.items():
+            if raw_col not in df.columns:
+                if internal_name in essential_internal_names:
+                    missing_essential.append(raw_col)
+                else:
+                    missing_optional.append(raw_col)
+
+        if missing_essential:
             raise ValueError(
-                f"Missing expected columns in '{filepath}': {missing_cols}. "
-                f"Please check your Isodat export template or SystemConfig mapping."
+                f"Missing ESSENTIAL columns in '{filepath}': {missing_essential}. "
+                f"These are required for IRMS processing. Found columns: {list(df.columns)}"
+            )
+        
+        if missing_optional:
+            warnings.warn(
+                f"Missing optional columns in '{filepath}': {missing_optional}. "
+                "Calculations will proceed but some metadata may be lost."
             )
 
         # 4. Rename Columns using Config

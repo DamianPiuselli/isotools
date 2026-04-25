@@ -11,7 +11,7 @@
     - Provide clear error messages/warnings for missing data.
 
 ## Phase 2: Usability & Reporting
-- [ ] **Task 4: Standardized Export**
+- [x] **Task 4: Standardized Export**
     - Implement `Batch.save_report(filepath)` to export results and QAQC to a multi-sheet Excel file.
 - [ ] **Task 5: Improved Grouping**
     - Ensure control standards are aggregated by canonical name in the final report, even if raw names differ.
