@@ -270,7 +270,7 @@ class Batch:
 
     # --- Processing Core ---
 
-    def process(self, strategy: CalibrationStrategy):
+    def process(self, strategy: CalibrationStrategy, use_method_precision: bool = False):
         """
         The Main Pipeline:
         1. Fit Strategy (using Anchors)
@@ -305,7 +305,13 @@ class Batch:
 
         anchor_stats = anchor_rows.groupby(
             anchor_rows["sample_name"].apply(map_to_canonical)
-        )[self.config.target_column].agg(["mean", "sem"])
+        )[self.config.target_column].agg(["mean", "sem", "count"])
+
+        # Optional Precision Override: use sigma / sqrt(n)
+        if use_method_precision and self.config.method_precision > 0:
+            anchor_stats["sem"] = self.config.method_precision / np.sqrt(
+                anchor_stats["count"]
+            )
 
         # C. Fit the Strategy
         strategy.fit(anchor_stats, self.anchors)
@@ -319,6 +325,11 @@ class Batch:
         self._summary = valid_data.groupby("sample_name")[
             self.config.target_column
         ].agg(["mean", "sem", "count"])
+
+        if use_method_precision and self.config.method_precision > 0:
+            self._summary["sem"] = self.config.method_precision / np.sqrt(
+                self._summary["count"]
+            )
 
         # F. Propagate Uncertainty (Sample Level)
         # This adds 'combined_uncertainty' and 'corrected_mean' to _summary

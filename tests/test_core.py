@@ -98,3 +98,37 @@ def test_batch_plot_calibration(mock_read, mock_isodat_file):
     ax = batch.plot_calibration()
     assert isinstance(ax, plt.Axes)
     plt.close()
+
+@patch("isotools.utils.readers.pd.read_excel")
+def test_batch_precision_override(mock_read):
+    """Test that use_method_precision correctly overrides sample SEM."""
+    from isotools.config import Water_H
+    import numpy as np
+    
+    # 1. Setup data with perfect precision (all same values)
+    # Row 1-2: Anchor 1, Row 3-4: Anchor 2, Row 5: Sample
+    data = {
+        "Identifier 1": ["Mar_H", "Mar_H", "Antartida_H", "Antartida_H", "S1", "S1"],
+        "Peak Nr": [3, 3, 3, 3, 3, 3],
+        "d 3H2/2H2": [-10.0, -10.0, -90.0, -90.0, -50.0, -50.0],
+        "Row": [1, 2, 3, 4, 5, 6],
+    }
+    mock_read.return_value = pd.DataFrame(data)
+    
+    batch = Batch("dummy.xls", config=Water_H)
+    batch.set_anchors(["Mar_H", "Antartida_H"])
+    
+    # 2. Process with empirical SEM (which will be 0.0)
+    batch.process(TwoPointLinear(), use_method_precision=False)
+    unc_empirical = batch._summary.loc["S1", "combined_uncertainty"]
+    sem_empirical = batch._summary.loc["S1", "sem"]
+    assert sem_empirical == 0.0
+    
+    # 3. Process with method precision (Water_H precision = 1.4)
+    # For S1 with n=2, expected SEM = 1.4 / sqrt(2) = 0.9899
+    batch.process(TwoPointLinear(), use_method_precision=True)
+    unc_overridden = batch._summary.loc["S1", "combined_uncertainty"]
+    sem_overridden = batch._summary.loc["S1", "sem"]
+    
+    assert sem_overridden == pytest.approx(1.4 / np.sqrt(2))
+    assert unc_overridden > unc_empirical

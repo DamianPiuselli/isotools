@@ -15,6 +15,8 @@ class SystemConfig:
     column_mapping: Dict[str, str]
     # A function that takes the raw DF and returns the filtered DF (e.g. keeping specific peaks)
     filter_func: Callable[[pd.DataFrame], pd.DataFrame] = field(default=lambda df: df)
+    # Optional method repeatability (1-sigma instrument precision)
+    method_precision: float = 0.0
 
 
 # --- Logic Helpers ---
@@ -92,6 +94,7 @@ Water_H = SystemConfig(
     target_column="d2h",
     column_mapping=WATER_H_MAPPING,
     filter_func=_filter_water_h_peaks,
+    method_precision=1.4,
 )
 
 Water_O = SystemConfig(
@@ -99,4 +102,5 @@ Water_O = SystemConfig(
     target_column="d18o",
     column_mapping=WATER_O_MAPPING,
     filter_func=_filter_water_o_peaks,
+    method_precision=0.24,
 )
