@@ -79,3 +79,22 @@ def test_batch_outlier_exclusion(mock_read, mock_isodat_file):
     # The 'Unknown' sample (Row 5) was the only row for that sample name.
     # So it should NOT appear in the final summary report.
     assert "Unknown" not in batch.report.index
+
+@patch("isotools.utils.readers.pd.read_excel")
+def test_batch_plot_calibration(mock_read, mock_isodat_file):
+    """Test that plot_calibration generates an axes object."""
+    mock_read.return_value = mock_isodat_file
+    import matplotlib.pyplot as plt
+    
+    batch = Batch("dummy.xls", config=Nitrogen)
+    
+    # Error if called before process
+    with pytest.raises(RuntimeError, match=r"Run .process\(\) before"):
+        batch.plot_calibration()
+        
+    batch.set_anchors(["USGS32", "USGS34"])
+    batch.process(TwoPointLinear())
+    
+    ax = batch.plot_calibration()
+    assert isinstance(ax, plt.Axes)
+    plt.close()
