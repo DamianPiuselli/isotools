@@ -1,4 +1,5 @@
 from typing import List, Dict, Optional, Iterable
+import warnings
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -36,11 +37,97 @@ class Batch:
         self.drift_monitors: Dict[str, ReferenceMaterial] = {}  # Used for Drift Check
         self._summary: Optional[pd.DataFrame] = None
         self._strategy: Optional[CalibrationStrategy] = None
+        self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
+
+        # 3. Initial Diagnostics
+        self.detect_outliers()
+        if not self._alerts.empty:
+            warnings.warn(
+                f"Detected {len(self._alerts)} suspicious data points on initial load. "
+                "Check the .alerts property for details."
+            )
 
     @property
     def data_view(self) -> pd.DataFrame:
         """Returns the full raw data for preliminary analysis and inspection."""
         return self.replicates
+
+    @property
+    def alerts(self) -> pd.DataFrame:
+        """Returns a table of flagged outliers and problematic data."""
+        return self._alerts
+
+    def detect_outliers(self):
+        """
+        Runs automatic diagnostics to identify suspicious data points.
+        1. Range Check: Outside expected environmental values (on normalized data).
+        2. Precision Check: Sample SD > 3x method precision (on raw/drift-corrected data).
+        3. Amplitude Check: Amplitude < 50% or > 200% of run median.
+        """
+        alerts = []
+        valid = self.replicates[~self.replicates["excluded"]].copy()
+
+        if valid.empty:
+            self._alerts = pd.DataFrame(columns=["row", "sample_name", "reason"])
+            return
+
+        # --- 1. Range Check (Normalized only) ---
+        target_col = self.config.target_column
+        norm_col = f"corrected_{target_col}"
+        
+        if norm_col in valid.columns:
+            r_min, r_max = self.config.absolute_range
+            out_of_range = valid[
+                (valid[norm_col] < r_min) | (valid[norm_col] > r_max)
+            ]
+            for _, row in out_of_range.iterrows():
+                alerts.append(
+                    {
+                        "row": row.get("row", -1),
+                        "sample_name": row["sample_name"],
+                        "reason": f"Value {row[norm_col]:.2f} is outside expected range ({r_min}, {r_max})",
+                    }
+                )
+
+        # --- 2. Precision Check (Variance) ---
+        if self.config.method_precision > 0:
+            threshold = 3 * self.config.method_precision
+            # Calculate STD per sample
+            stats = valid.groupby("sample_name")["working_value"].std().reset_index()
+            flagged_samples = stats[stats["working_value"] > threshold]["sample_name"]
+            
+            for name in flagged_samples:
+                sample_rows = valid[valid["sample_name"] == name]
+                val_std = stats[stats["sample_name"] == name]["working_value"].values[0]
+                for _, row in sample_rows.iterrows():
+                    alerts.append(
+                        {
+                            "row": row.get("row", -1),
+                            "sample_name": name,
+                            "reason": f"High Variance: SD ({val_std:.2f}) > 3x method precision ({threshold:.2f})",
+                        }
+                    )
+
+        # --- 3. Amplitude Check ---
+        amp_col = self.config.amplitude_column
+        if amp_col and amp_col in valid.columns:
+            median_amp = valid[amp_col].median()
+            # Flag if < 50% or > 200% of median
+            bad_amp = valid[
+                (valid[amp_col] < 0.5 * median_amp) | (valid[amp_col] > 2.0 * median_amp)
+            ]
+            for _, row in bad_amp.iterrows():
+                alerts.append(
+                    {
+                        "row": row.get("row", -1),
+                        "sample_name": row["sample_name"],
+                        "reason": f"Amplitude Anomaly: {row[amp_col]:.0f} is far from run median ({median_amp:.0f})",
+                    }
+                )
+
+        self._alerts = pd.DataFrame(alerts)
+        if not self._alerts.empty:
+            self._alerts = self._alerts.drop_duplicates()
 
     # --- Data Cleaning ---
 
@@ -288,17 +375,28 @@ class Batch:
     def process(self, strategy: CalibrationStrategy, use_method_precision: bool = False):
         """
         The Main Pipeline:
-        1. Fit Strategy (using Anchors from working_value)
-        2. Correct Replicates (Row-by-Row)
-        3. Aggregate to Summary (Sample-Level)
-        4. Propagate Uncertainty (Kragten)
+        1. Run Diagnostics (Detect Outliers)
+        2. Prepare Anchor Stats for fitting
+        3. Fit Strategy (using Anchors from working_value)
+        4. Correct Replicates (Row-by-Row)
+        5. Aggregate to Summary (Sample-Level)
+        6. Propagate Uncertainty (Kragten)
+        7. Refresh Diagnostics (Including Range Checks)
         """
         self._strategy = strategy
 
-        # A. Filter valid data for calculation
+        # A. Run Diagnostics
+        self.detect_outliers()
+        if not self._alerts.empty:
+            warnings.warn(
+                f"Detected {len(self._alerts)} suspicious data points. "
+                "Check the .alerts property for details."
+            )
+
+        # B. Filter valid data for calculation
         valid_data = self.replicates[~self.replicates["excluded"]]
 
-        # B. Prepare Anchor Stats for Fitting
+        # C. Prepare Anchor Stats for Fitting
         valid_data = valid_data.copy()
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self._get_canonical_name(x, self.anchors)
@@ -319,19 +417,24 @@ class Batch:
                 anchor_stats["count"]
             )
 
-        # C. Fit the Strategy
+        # D. Fit the Strategy
         strategy.fit(anchor_stats, self.anchors)
 
-        # D. Apply to Replicates (Vectorized)
+        # E. Apply to Replicates (Vectorized)
         # Always use working_value as input
+        target_col = self.config.target_column
+        norm_col = f"corrected_{target_col}"
+        if norm_col in self.replicates.columns:
+            self.replicates = self.replicates.drop(columns=[norm_col])
+
         self.replicates = strategy.apply(self.replicates, "working_value")
         
         # Rename the output column to match the expected client-facing name
         self.replicates = self.replicates.rename(
-            columns={f"corrected_working_value": f"corrected_{self.config.target_column}"}
+            columns={f"corrected_working_value": norm_col}
         )
 
-        # E. Aggregate to Summary (Sample Level)
+        # F. Aggregate to Summary (Sample Level)
         # We group by canonical name for standards, but keep raw names for unknowns
         summary_data = self.replicates[~self.replicates["excluded"]].copy()
         
@@ -358,10 +461,18 @@ class Batch:
                 self._summary["count"]
             )
 
-        # F. Propagate Uncertainty (Sample Level)
+        # G. Propagate Uncertainty (Sample Level)
         # strategy.propagate will add 'combined_uncertainty' and its own 'corrected_{target_col}'
         # but we need to tell it that the input mean is 'working_value'
         self._summary = strategy.propagate(self._summary, self.config.target_column)
+
+        # H. Refresh Diagnostics (Now including Range Checks on normalized data)
+        self.detect_outliers()
+        if not self._alerts.empty:
+            warnings.warn(
+                f"Detected {len(self._alerts)} suspicious data points after processing. "
+                "Check the .alerts property for details."
+            )
 
     # --- Reporting ---
 

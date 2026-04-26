@@ -156,6 +156,43 @@ def test_batch_data_view(mock_read, mock_isodat_file):
     assert "excluded" in view.columns
 
 @patch("isotools.utils.readers.pd.read_excel")
+def test_outlier_detection(mock_read):
+    """Test that outliers are correctly identified."""
+    from isotools.config import Water_H
+    from isotools.strategies import TwoPointLinear
+    
+    # Setup data with:
+    # 1. Range outlier (Row 1) - should only flag AFTER process
+    # 2. Variance outlier (S1: Row 2-3) - flags immediately
+    # 3. Amplitude outlier (Row 4) - flags immediately
+    data = {
+        "Identifier 1": ["RangeOut", "VarOut", "VarOut", "AmpOut", "Mar_H", "Antartida_H"],
+        "Peak Nr": [3, 3, 3, 3, 3, 3],
+        "d 3H2/2H2": [2000.0, -50.0, -100.0, -50.0, -0.49, -94.89],
+        "Row": [1, 2, 3, 4, 5, 6],
+        "Ampl 2": [1000, 1000, 1000, 100, 1000, 1000],
+    }
+    mock_read.return_value = pd.DataFrame(data)
+    
+    batch = Batch("dummy.xls", config=Water_H)
+    alerts = batch.alerts
+    
+    # 1. Variance check (immediate)
+    assert any("High Variance" in r for r in alerts[alerts["sample_name"] == "VarOut"]["reason"])
+    
+    # 2. Amplitude check (immediate)
+    assert any("Amplitude Anomaly" in r for r in alerts[alerts["sample_name"] == "AmpOut"]["reason"])
+    
+    # 3. Range check (NOT immediate)
+    assert not any("outside expected range" in r for r in alerts[alerts["sample_name"] == "RangeOut"]["reason"])
+
+    # 4. Now process and check range
+    batch.set_anchors(["Mar_H", "Antartida_H"]) 
+    batch.process(strategy=TwoPointLinear())
+    alerts_post = batch.alerts
+    assert any("outside expected range" in r for r in alerts_post[alerts_post["sample_name"] == "RangeOut"]["reason"])
+
+@patch("isotools.utils.readers.pd.read_excel")
 def test_batch_save_report(mock_read, mock_isodat_file, tmp_path):
     """Test that save_report creates an Excel file."""
     mock_read.return_value = mock_isodat_file

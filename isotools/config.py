@@ -17,6 +17,10 @@ class SystemConfig:
     filter_func: Callable[[pd.DataFrame], pd.DataFrame] = field(default=lambda df: df)
     # Optional method repeatability (1-sigma instrument precision)
     method_precision: float = 0.0
+    # Expected environmental range (min, max)
+    absolute_range: tuple[float, float] = (-2000.0, 2000.0)
+    # The column used for signal intensity/amplitude (e.g. amp_28, amp_2)
+    amplitude_column: str = ""
 
 
 # --- Logic Helpers ---
@@ -87,6 +91,8 @@ Nitrogen = SystemConfig(
     target_column="d15n",
     column_mapping=NITROGEN_MAPPING,
     filter_func=_filter_n2_peaks,
+    amplitude_column="amp_28",
+    absolute_range=(-20.0, 50.0),
 )
 
 Water_H = SystemConfig(
@@ -95,6 +101,8 @@ Water_H = SystemConfig(
     column_mapping=WATER_H_MAPPING,
     filter_func=_filter_water_h_peaks,
     method_precision=1.4,
+    amplitude_column="amp_2",
+    absolute_range=(-400.0, 50.0),
 )
 
 Water_O = SystemConfig(
@@ -103,4 +111,6 @@ Water_O = SystemConfig(
     column_mapping=WATER_O_MAPPING,
     filter_func=_filter_water_o_peaks,
     method_precision=0.24,
+    amplitude_column="amp_28",
+    absolute_range=(-60.0, 20.0),
 )

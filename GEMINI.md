@@ -45,8 +45,9 @@ Always interact with data through the `Batch` object. Avoid manual pandas manipu
 1. **Initialize:** `run = Batch("data.xls", config=Nitrogen)`
 2. **Clean:** `run.exclude_rows([1, 5, 10])`
 3. **Configure:** `run.set_anchors([...])`, `run.set_controls([...])`
-4. **Process:** `run.process(strategy=TwoPointLinear())`
-5. **Output:** `run.report`, `run.qaqc`
+4. **Process:** `run.process(strategy=TwoPointLinear())` (Triggers automatic outlier detection)
+5. **Inspect Alerts:** `print(run.alerts)` (If warnings were emitted during process)
+6. **Output:** `run.report`, `run.qaqc`
 
 ### 2. Uncertainty Propagation
 The `CalibrationStrategy.propagate()` method must implement Kragten propagation (via `isotools.utils.kragten`) to ensure all sources of error (standard uncertainty, measurement SEM, calibration fit) are combined correctly.
