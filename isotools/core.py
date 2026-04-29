@@ -35,6 +35,8 @@ class Batch:
         self.anchors: Dict[str, ReferenceMaterial] = {}  # Used for calibration
         self.controls: Dict[str, ReferenceMaterial] = {}  # Used for QC/Trueness
         self.drift_monitors: Dict[str, ReferenceMaterial] = {}  # Used for Drift Check
+        self.drift_correction_applied = False
+        self.drift_monitor_used: Optional[str] = None
         self._summary: Optional[pd.DataFrame] = None
         self._strategy: Optional[CalibrationStrategy] = None
         self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
@@ -300,10 +302,13 @@ class Batch:
         
         # Apply correction to working_value, starting from raw target
         self.replicates["working_value"] = self.replicates[self.config.target_column] - (slope * self.replicates["row"])
-        
+
+        # Record correction
+        self.drift_correction_applied = True
+        self.drift_monitor_used = monitor_name
+
         # Invalidate summary cache
         self._summary = None
-
     def plot_calibration(self, ax: Optional[plt.Axes] = None):
         """
         Plots the calibration curve showing all individual anchor replicates 
@@ -552,6 +557,8 @@ class Batch:
                 "Anchors": ", ".join(self.anchors.keys()),
                 "Controls": ", ".join(self.controls.keys()),
                 "Drift Monitors": ", ".join(self.drift_monitors.keys()),
+                "Drift Correction Applied": self.drift_correction_applied,
+                "Drift Monitor Used": self.drift_monitor_used if self.drift_correction_applied else "None",
             }
             if self._strategy:
                 # Add fit parameters if available

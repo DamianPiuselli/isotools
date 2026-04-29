@@ -83,6 +83,27 @@ def test_apply_drift_correction(mock_read, drift_data):
         stats_raw = batch.check_drift(use_working=False)
         assert stats_raw.loc["Buenos Aires", "Slope"] == pytest.approx(0.2, abs=0.01)
 
+@patch("isotools.utils.readers.pd.read_excel")
+def test_drift_tracking_attributes(mock_read, drift_data):
+    mock_read.return_value = drift_data
+    with patch("isotools.core.get_standard") as mock_get_std:
+        from isotools.models import ReferenceMaterial
+        BA = ReferenceMaterial(name="Buenos Aires", d_true=-40.0, u_true=0.5)
+        mock_get_std.return_value = BA
+        
+        batch = Batch("dummy.xls", config=Water_H)
+        
+        # Initial state
+        assert batch.drift_correction_applied is False
+        assert batch.drift_monitor_used is None
+        
+        batch.set_drift_monitors(["Buenos Aires"])
+        batch.apply_drift_correction("Buenos Aires")
+        
+        # After correction
+        assert batch.drift_correction_applied is True
+        assert batch.drift_monitor_used == "Buenos Aires"
+
 def test_drift_no_monitors():
     with patch("isotools.utils.readers.pd.read_excel") as mock_read:
         mock_read.return_value = pd.DataFrame({"Identifier 1": ["S1"], "Peak Nr": [3], "d 3H2/2H2": [0], "Row": [1]})
