@@ -25,6 +25,8 @@ isotools/
 │   ├── test_drift.py
 │   ├── test_readers.py
 │   └── test_strategies.py
+├── pyproject.toml      # Build system configuration
+├── setup.py            # Package installation script
 ├── BACKLOG.md          # Project roadmap and pending tasks
 ├── file_structure.md   # This file
 ├── LICENSE

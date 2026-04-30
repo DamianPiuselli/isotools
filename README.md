@@ -18,15 +18,21 @@ It moves away from procedural scripts to a **Batch-Centric** workflow, where dat
 
 ## Installation
 
-Clone the repository and install the dependencies:
+The easiest way to install **isotools** (especially in Google Colab or similar environments) is directly from GitHub:
 
 ```bash
-git clone https://github.com/DamianPiuselli/IRMS.git
-cd IRMS
-pip install -r requirements.txt
+pip install git+https://github.com/DamianPiuselli/isotools.git
 ```
 
-For development (testing and linting), install:
+For local development:
+
+```bash
+git clone https://github.com/DamianPiuselli/isotools.git
+cd isotools
+pip install -e .
+```
+
+For development dependencies (testing and linting):
 ```bash
 pip install -r requirements-dev.txt
 ```
