@@ -26,7 +26,7 @@
     - Implement methods to correct for gas amount dependencies and sample-to-sample carryover.
 - [ ] **Task 9: Long-term QA/QC Tracking**
     - Create a module to track and visualize control standards across multiple runs over time (e.g., Shewhart charts).
-- [ ] **Task 10: Interactive HTML Reports**
+- [x] **Task 10: Interactive HTML Reports**
     - Add functionality to generate standalone interactive reports with plots (Plotly/Bokeh) for easier data review.
 - [ ] **Task 11: Detailed Uncertainty Budget**
     - Provide a breakdown of uncertainty sources (measurement vs standard vs fit) in the report to help optimize methods.

@@ -15,6 +15,7 @@ from .utils.readers import IsodatReader
 from .models import ReferenceMaterial
 from .standards import get_standard
 from .strategies.abstract import CalibrationStrategy
+from .reporting.html import generate_html_report
 
 
 class Batch:
@@ -587,3 +588,9 @@ class Batch:
                 params["Intercept"] = getattr(self._strategy, "intercept", "N/A")
 
             pd.Series(params).to_frame("Value").to_excel(writer, sheet_name="Parameters")
+
+    def save_html_report(self, filepath: str):
+        """
+        Exports the results, diagnostics, and interactive plots to a standalone HTML file.
+        """
+        generate_html_report(self, filepath)
