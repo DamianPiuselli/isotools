@@ -22,4 +22,17 @@ jobs:
 
       - name: Analysing the code with pylint
         run: |
-          pylint $(git ls-files '*.py') --fail-under=8.5
+          pylint $(git ls-files '*.py') --exit-zero | tee /tmp/pylint_output.txt
+          python3 -c "
+          import re, sys
+          with open('/tmp/pylint_output.txt') as f:
+              content = f.read()
+          match = re.search(r'rated at (\d+\.\d+)', content)
+          if not match:
+              print('Could not parse pylint score')
+              sys.exit(1)
+          score = float(match.group(1))
+          threshold = 8.5
+          print(f'Pylint score: {score}/10 (threshold: {threshold})')
+          sys.exit(0 if score >= threshold else 1)
+          "
