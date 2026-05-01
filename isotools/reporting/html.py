@@ -114,7 +114,7 @@ def _create_calibration_plot(batch) -> str:
     valid_data["canonical_name"] = valid_data["sample_name"].apply(
         lambda x: batch._get_canonical_name(x, batch.anchors)
     )
-    anchor_data = valid_data[valid_data["canonical_name"].notna()]
+    anchor_data = valid_data[valid_data["canonical_name"].notna()].copy()
 
     if anchor_data.empty:
         return "<p>No anchor data found.</p>"

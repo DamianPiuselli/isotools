@@ -6,6 +6,9 @@ import warnings
 import pandas as pd
 from ..config import SystemConfig
 
+# Silence openpyxl warnings about malformed headers/footers in Isodat files
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+
 
 class IsodatReader:
     """

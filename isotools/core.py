@@ -279,24 +279,55 @@ class Batch:
 
         col_to_use = "working_value" if use_working else self.config.target_column
 
-        sns.regplot(
+        # Plot individual points with different colors per monitor
+        sns.scatterplot(
             data=drift_data,
             x="row",
             y=col_to_use,
-            scatter_kws={"alpha": 0.6},
-            ax=ax
+            hue="canonical_name",
+            s=60,
+            alpha=0.7,
+            ax=ax,
+            zorder=3
         )
 
-        # Add labels and formatting
-        ax.set_title(f"Drift Analysis ({self.config.name})")
-        ax.set_xlabel("Injection (Row)")
-        ax.set_ylabel(f"{'Working' if use_working else 'Raw'} {self.config.target_column}")
-
-        # Calculate stats for annotation
+        # Add regression lines manually for better control
         stats_df = self.check_drift(use_working=use_working)
         for i, (name, row) in enumerate(stats_df.iterrows()):
-            txt = f"{name}: Slope={row['Slope']:.4f} ± {row['CI_95']:.4f} (p={row['p_value']:.3f})"
-            ax.annotate(txt, xy=(0.05, 0.95 - i*0.05), xycoords='axes fraction', fontsize=10)
+            group = drift_data[drift_data["canonical_name"] == name]
+            x = group["row"]
+            y = group[col_to_use]
+            
+            # Re-calculate line for plotting
+            slope = row["Slope"]
+            intercept = y.mean() - slope * x.mean()
+            x_range = np.array([x.min(), x.max()])
+            y_range = slope * x_range + intercept
+            
+            line_color = ax.get_lines()[-1].get_color() if ax.get_lines() else None
+            ax.plot(x_range, y_range, linestyle='--', alpha=0.8, zorder=2, color="black")
+            
+            # Enhanced annotation with CI for decision making
+            txt = (f"{name}:\n\n"
+                   f"  y = {slope:.3f}x + {intercept:.3f}\n"
+                   f"  Slope CI 95%: {slope:.3f} ± {row['CI_95']:.3f}\n"
+                   f"  R² = {row['R_squared']:.3f}, p = {row['p_value']:.3f}")
+            
+            ax.annotate(
+                txt, 
+                xy=(0.02, 0.95 - i*0.15), 
+                xycoords='axes fraction', 
+                fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", alpha=0.8),
+                verticalalignment='top'
+            )
+
+        # Formatting for consistency
+        ax.set_title(f"Analytical Drift: {self.config.name}", fontsize=12, fontweight='bold')
+        ax.set_xlabel("Injection (Row)", fontsize=10)
+        ax.set_ylabel(f"{'Working' if use_working else 'Raw'} {self.config.target_column}", fontsize=10)
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.legend(title="Drift Monitor", loc='lower right')
 
         return ax
 
@@ -344,7 +375,7 @@ class Batch:
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self._get_canonical_name(x, self.anchors)
         )
-        anchor_data = valid_data[valid_data["canonical_name"].notna()]
+        anchor_data = valid_data[valid_data["canonical_name"].notna()].copy()
 
         def get_true_val(canonical_name):
             return self.anchors[canonical_name].d_true
@@ -370,14 +401,14 @@ class Batch:
         )
 
         # 3. Draw the Calibration Line (Instrument Fit: Raw = m * True + b)
-        # We draw it across the range of true values
         t_min, t_max = anchor_data["d_true"].min(), anchor_data["d_true"].max()
-        # Add some padding
         pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
         t_line = np.linspace(t_min - pad, t_max + pad, 100)
 
         # Raw = m * True + b
-        y_line = (t_line * self._strategy.slope) + self._strategy.intercept
+        m = self._strategy.slope
+        b = self._strategy.intercept
+        y_line = (t_line * m) + b
 
         ax.plot(
             t_line,
@@ -388,10 +419,25 @@ class Batch:
             zorder=2
         )
 
-        ax.set_title(f"Calibration Curve: {self.config.name}")
-        ax.set_xlabel("Reference Value (True)")
-        ax.set_ylabel(f"Measured {self.config.target_column} (Drift-Corrected)")
-        ax.legend()
+        # Annotation with Equation and R2
+        txt = (f"Fit Equation (Measured vs True):\n"
+               f"  y = {m:.4f}x + {b:.4f}\n"
+               f"  R² = {self._strategy.r_squared:.4f}")
+        
+        ax.annotate(
+            txt,
+            xy=(0.05, 0.95),
+            xycoords='axes fraction',
+            fontsize=10,
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", alpha=0.8),
+            verticalalignment='top'
+        )
+
+        # Formatting for consistency
+        ax.set_title(f"Calibration Curve: {self.config.name}", fontsize=12, fontweight='bold')
+        ax.set_xlabel("Reference Value (True)", fontsize=10)
+        ax.set_ylabel(f"Measured {self.config.target_column} (Drift-Corrected)", fontsize=10)
+        ax.legend(loc='lower right')
         ax.grid(True, linestyle=':', alpha=0.6)
 
         return ax
