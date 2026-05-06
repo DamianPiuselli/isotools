@@ -9,7 +9,13 @@ extension-pkg-allow-list=numpy, pandas
 # C0115: Missing class docstring
 # C0116: Missing function docstring
 # R0903: Too few public methods (Dataclasses often trigger this)
-disable=C0114, C0115, C0116, R0903
+# R1735: Use dict literal (dict() is often cleaner for large configs)
+disable=C0114, C0115, C0116, R0903, R1735
+
+[DESIGN]
+# Increased for complex scientific models
+max-attributes=12
+max-locals=25
 
 [FORMAT]
 # Default is 100. For scientific code, 120 is often more comfortable.

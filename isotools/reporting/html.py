@@ -3,7 +3,6 @@ HTML reporting module using Plotly and Jinja2.
 """
 import os
 from datetime import datetime
-import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -20,11 +19,11 @@ def _create_drift_plot(batch) -> str:
 
     # Identify drift monitors vs others
     valid_data["canonical_name"] = valid_data["sample_name"].apply(
-        lambda x: batch._get_canonical_name(x, batch.drift_monitors)
+        lambda x: batch.get_canonical_name(x, batch.drift_monitors)
     )
-    
+
     fig = go.Figure()
-    
+
     # 1. Plot Unknowns/Samples first (as a background)
     unknowns = valid_data[valid_data["canonical_name"].isna()]
     if not unknowns.empty:
@@ -58,17 +57,17 @@ def _create_drift_plot(batch) -> str:
             monitor_rows = monitors[monitors["canonical_name"] == name]["row"]
             if monitor_rows.empty:
                 continue
-            
+
             x_min, x_max = monitor_rows.min(), monitor_rows.max()
             group = monitors[monitors["canonical_name"] == name]
             m = stats["Slope"]
             # Re-calculate intercept locally for plotting
             b = group[batch.config.target_column].mean() - m * group["row"].mean()
-            
+
             # Use Python lists for x and y to avoid binary encoding
             x_line = [float(x_min), float(x_max)]
             y_line = [float(m * x_min + b), float(m * x_max + b)]
-            
+
             fig.add_trace(go.Scatter(
                 x=x_line,
                 y=y_line,
@@ -107,12 +106,12 @@ def _create_drift_plot(batch) -> str:
 
 def _create_calibration_plot(batch) -> str:
     """Generates an interactive Plotly calibration plot."""
-    if batch._strategy is None:
+    if batch.strategy is None:
         return "<p>Process batch before generating calibration plot.</p>"
 
     valid_data = batch.replicates[~batch.replicates["excluded"]].copy()
     valid_data["canonical_name"] = valid_data["sample_name"].apply(
-        lambda x: batch._get_canonical_name(x, batch.anchors)
+        lambda x: batch.get_canonical_name(x, batch.anchors)
     )
     anchor_data = valid_data[valid_data["canonical_name"].notna()].copy()
 
@@ -139,9 +138,9 @@ def _create_calibration_plot(batch) -> str:
     t_min, t_max = anchor_data["d_true"].min(), anchor_data["d_true"].max()
     pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
     t_line = np.linspace(t_min - pad, t_max + pad, 100).tolist() # Convert to list
-    
-    m = batch._strategy.slope
-    b = batch._strategy.intercept
+
+    m = batch.strategy.slope
+    b = batch.strategy.intercept
     y_line = [float(m * t + b) for t in t_line] # Convert to list of floats
 
     fig.add_trace(go.Scatter(
@@ -154,7 +153,7 @@ def _create_calibration_plot(batch) -> str:
     ))
 
     # 3. Annotation for Equation
-    eq_text = f"y = {m:.4f}x + {b:.4f}<br>R² = {batch._strategy.r_squared:.4f}"
+    eq_text = f"y = {m:.4f}x + {b:.4f}<br>R² = {batch.strategy.r_squared:.4f}"
     fig.add_annotation(
         xref="paper", yref="paper",
         x=0.05, y=0.95,
@@ -190,7 +189,7 @@ def generate_html_report(batch, filepath: str):
     alerts = batch.alerts.to_dict('records') if not batch.alerts.empty else []
 
     # Results table - Only if processed
-    if batch._summary is not None:
+    if batch.summary is not None:
         results_df = batch.report.copy()
         results_table_html = results_df.to_html(classes='table', border=0)
 
@@ -206,7 +205,7 @@ def generate_html_report(batch, filepath: str):
         "system_name": batch.config.name,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "filepath": batch.filepath,
-        "strategy_name": batch._strategy.__class__.__name__ if batch._strategy else "Not Processed",
+        "strategy_name": batch.strategy.__class__.__name__ if batch.strategy else "Not Processed",
         "drift_correction_applied": batch.drift_correction_applied,
         "drift_monitors_set": len(batch.drift_monitors) > 0,
         "alerts": alerts,

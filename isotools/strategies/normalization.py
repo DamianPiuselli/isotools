@@ -4,6 +4,7 @@ Standard normalization strategies for IRMS data.
 from typing import Dict
 import numpy as np
 import pandas as pd
+from scipy import stats as sp_stats
 
 from ..models import ReferenceMaterial
 from ..utils.kragten import propagate_kragten
@@ -172,7 +173,6 @@ class MultiPointLinear(CalibrationStrategy):
 
         # OLS fit (Instrument Fit: Raw = m * True + b)
         # We use scipy.stats.linregress to get R2 as well
-        from scipy import stats as sp_stats
         slope, intercept, r_value, _, _ = sp_stats.linregress(y_true, x_raw)
         self.slope = slope
         self.intercept = intercept

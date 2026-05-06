@@ -121,15 +121,15 @@ def test_batch_precision_override(mock_read):
     
     # 2. Process with empirical SEM (which will be 0.0)
     batch.process(TwoPointLinear(), use_method_precision=False)
-    unc_empirical = batch._summary.loc["S1", "combined_uncertainty"]
-    sem_empirical = batch._summary.loc["S1", "sem"]
+    unc_empirical = batch.summary.loc["S1", "combined_uncertainty"]
+    sem_empirical = batch.summary.loc["S1", "sem"]
     assert sem_empirical == 0.0
     
     # 3. Process with method precision (WATER_H precision = 1.4)
     # For S1 with n=2, expected SEM = 1.4 / sqrt(2) = 0.9899
     batch.process(TwoPointLinear(), use_method_precision=True)
-    unc_overridden = batch._summary.loc["S1", "combined_uncertainty"]
-    sem_overridden = batch._summary.loc["S1", "sem"]
+    unc_overridden = batch.summary.loc["S1", "combined_uncertainty"]
+    sem_overridden = batch.summary.loc["S1", "sem"]
     
     assert sem_overridden == pytest.approx(1.4 / np.sqrt(2))
     assert unc_overridden > unc_empirical

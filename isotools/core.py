@@ -52,8 +52,8 @@ class Batch:
         self.drift_monitors: Dict[str, ReferenceMaterial] = {}  # Used for Drift Check
         self.drift_correction_applied = False
         self.drift_monitor_used: Optional[str] = None
-        self._summary: Optional[pd.DataFrame] = None
-        self._strategy: Optional[CalibrationStrategy] = None
+        self.summary: Optional[pd.DataFrame] = None
+        self.strategy: Optional[CalibrationStrategy] = None
         self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
 
         # 3. Initial Diagnostics
@@ -160,7 +160,7 @@ class Batch:
             mask = self.replicates["row"].isin(row_ids)
             self.replicates.loc[mask, "excluded"] = True
             # Invalidate summary cache since data changed
-            self._summary = None
+            self.summary = None
         else:
             raise KeyError("Data does not contain 'row' column for exclusion.")
 
@@ -190,7 +190,7 @@ class Batch:
             resolved[std.name] = std
         return resolved
 
-    def _get_canonical_name(
+    def get_canonical_name(
         self, raw_name: str, registry: Dict[str, ReferenceMaterial]
     ) -> Optional[str]:
         """
@@ -222,7 +222,7 @@ class Batch:
 
         # Add canonical name for grouping
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
-            lambda x: self._get_canonical_name(x, self.drift_monitors)
+            lambda x: self.get_canonical_name(x, self.drift_monitors)
         )
         drift_data = valid_data[valid_data["canonical_name"].notna()]
 
@@ -267,7 +267,7 @@ class Batch:
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
 
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
-            lambda x: self._get_canonical_name(x, self.drift_monitors)
+            lambda x: self.get_canonical_name(x, self.drift_monitors)
         )
         drift_data = valid_data[valid_data["canonical_name"].notna()]
 
@@ -297,26 +297,25 @@ class Batch:
             group = drift_data[drift_data["canonical_name"] == name]
             x = group["row"]
             y = group[col_to_use]
-            
+
             # Re-calculate line for plotting
             slope = row["Slope"]
             intercept = y.mean() - slope * x.mean()
             x_range = np.array([x.min(), x.max()])
             y_range = slope * x_range + intercept
-            
-            line_color = ax.get_lines()[-1].get_color() if ax.get_lines() else None
+
             ax.plot(x_range, y_range, linestyle='--', alpha=0.8, zorder=2, color="black")
-            
+
             # Enhanced annotation with CI for decision making
             txt = (f"{name}:\n\n"
                    f"  y = {slope:.3f}x + {intercept:.3f}\n"
                    f"  Slope CI 95%: {slope:.3f} ± {row['CI_95']:.3f}\n"
                    f"  R² = {row['R_squared']:.3f}, p = {row['p_value']:.3f}")
-            
+
             ax.annotate(
-                txt, 
-                xy=(0.02, 0.95 - i*0.15), 
-                xycoords='axes fraction', 
+                txt,
+                xy=(0.02, 0.95 - i*0.15),
+                xycoords='axes fraction',
                 fontsize=9,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", alpha=0.8),
                 verticalalignment='top'
@@ -342,7 +341,7 @@ class Batch:
 
         # Check if monitor_name is canonical or raw
         if monitor_name not in drift_stats.index:
-            monitor_name = self._get_canonical_name(monitor_name, self.drift_monitors)
+            monitor_name = self.get_canonical_name(monitor_name, self.drift_monitors)
 
             if monitor_name not in drift_stats.index:
                 raise ValueError(
@@ -357,23 +356,22 @@ class Batch:
         # Record correction
         self.drift_correction_applied = True
         self.drift_monitor_used = monitor_name
-
         # Invalidate summary cache
-        self._summary = None
+        self.summary = None
 
     def plot_calibration(self, ax: Optional[plt.Axes] = None):
         """
         Plots the calibration curve showing all individual anchor replicates
         and the fitted calibration line.
         """
-        if self._strategy is None:
+        if self.strategy is None:
             raise RuntimeError("Run .process() before requesting calibration plot.")
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
 
         # 1. Filter for Anchors and add True Values
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
-            lambda x: self._get_canonical_name(x, self.anchors)
+            lambda x: self.get_canonical_name(x, self.anchors)
         )
         anchor_data = valid_data[valid_data["canonical_name"].notna()].copy()
 
@@ -406,8 +404,8 @@ class Batch:
         t_line = np.linspace(t_min - pad, t_max + pad, 100)
 
         # Raw = m * True + b
-        m = self._strategy.slope
-        b = self._strategy.intercept
+        m = self.strategy.slope
+        b = self.strategy.intercept
         y_line = (t_line * m) + b
 
         ax.plot(
@@ -422,8 +420,8 @@ class Batch:
         # Annotation with Equation and R2
         txt = (f"Fit Equation (Measured vs True):\n"
                f"  y = {m:.4f}x + {b:.4f}\n"
-               f"  R² = {self._strategy.r_squared:.4f}")
-        
+               f"  R² = {self.strategy.r_squared:.4f}")
+
         ax.annotate(
             txt,
             xy=(0.05, 0.95),
@@ -456,7 +454,7 @@ class Batch:
         6. Propagate Uncertainty (Kragten)
         7. Refresh Diagnostics (Including Range Checks)
         """
-        self._strategy = strategy
+        self.strategy = strategy
 
         # A. Run Diagnostics
         self.detect_outliers()
@@ -472,7 +470,7 @@ class Batch:
         # C. Prepare Anchor Stats for Fitting
         valid_data = valid_data.copy()
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
-            lambda x: self._get_canonical_name(x, self.anchors)
+            lambda x: self.get_canonical_name(x, self.anchors)
         )
         anchor_rows = valid_data[valid_data["canonical_name"].notna()]
 
@@ -513,11 +511,11 @@ class Batch:
 
         def get_group_name(raw_name):
             # Check Anchors first
-            can_name = self._get_canonical_name(raw_name, self.anchors)
+            can_name = self.get_canonical_name(raw_name, self.anchors)
             if can_name:
                 return can_name
             # Then Controls
-            can_name = self._get_canonical_name(raw_name, self.controls)
+            can_name = self.get_canonical_name(raw_name, self.controls)
             if can_name:
                 return can_name
             # Fallback to raw name
@@ -525,19 +523,19 @@ class Batch:
 
         summary_data["group_name"] = summary_data["sample_name"].apply(get_group_name)
 
-        self._summary = summary_data.groupby("group_name")[
+        self.summary = summary_data.groupby("group_name")[
             "working_value"
         ].agg(["mean", "sem", "count"])
 
         if use_method_precision and self.config.method_precision > 0:
-            self._summary["sem"] = self.config.method_precision / np.sqrt(
-                self._summary["count"]
+            self.summary["sem"] = self.config.method_precision / np.sqrt(
+                self.summary["count"]
             )
 
         # G. Propagate Uncertainty (Sample Level)
         # strategy.propagate will add 'combined_uncertainty' and its own 'corrected_{target_col}'
         # but we need to tell it that the input mean is 'working_value'
-        self._summary = strategy.propagate(self._summary, self.config.target_column)
+        self.summary = strategy.propagate(self.summary, self.config.target_column)
 
         # H. Refresh Diagnostics (Now including Range Checks on normalized data)
         self.detect_outliers()
@@ -552,7 +550,7 @@ class Batch:
     @property
     def report(self) -> pd.DataFrame:
         """Returns the final client-ready table."""
-        if self._summary is None:
+        if self.summary is None:
             raise RuntimeError("Run .process() before requesting a report.")
 
         # Clean up the table for display
@@ -563,22 +561,22 @@ class Batch:
             "combined_uncertainty",
             "count",
         ]
-        return self._summary[cols].round(2)
+        return self.summary[cols].round(2)
 
     @property
     def qaqc(self) -> pd.DataFrame:
         """Returns trueness report for the Control standards."""
-        if self._summary is None:
+        if self.summary is None:
             raise RuntimeError("Run .process() before requesting QAQC.")
 
         # Filter summary for rows that match our Controls
         qc_rows = []
-        for sample_name in self._summary.index:
-            canonical_name = self._get_canonical_name(sample_name, self.controls)
+        for sample_name in self.summary.index:
+            canonical_name = self.get_canonical_name(sample_name, self.controls)
             if canonical_name:
                 std_obj = self.controls[canonical_name]
                 # Found a QC sample
-                row = self._summary.loc[sample_name].copy()
+                row = self.summary.loc[sample_name].copy()
                 row["True_Value"] = std_obj.d_true
                 row["Bias"] = (
                     row[f"corrected_{self.config.target_column}"] - std_obj.d_true
@@ -604,7 +602,7 @@ class Batch:
         """
         Exports the Results and QAQC tables to a multi-sheet Excel file.
         """
-        if self._summary is None:
+        if self.summary is None:
             raise RuntimeError("Run .process() before exporting the report.")
 
         with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
@@ -619,7 +617,7 @@ class Batch:
             # 3. Parameters/Metadata Sheet
             params = {
                 "System": self.config.name,
-                "Strategy": self._strategy.__class__.__name__ if self._strategy else "None",
+                "Strategy": self.strategy.__class__.__name__ if self.strategy else "None",
                 "Target Column": self.config.target_column,
                 "Filepath": self.filepath,
                 "Anchors": ", ".join(self.anchors.keys()),
@@ -628,10 +626,10 @@ class Batch:
                 "Drift Correction Applied": self.drift_correction_applied,
                 "Drift Monitor Used": self.drift_monitor_used if self.drift_correction_applied else "None",
             }
-            if self._strategy:
+            if self.strategy:
                 # Add fit parameters if available
-                params["Slope"] = getattr(self._strategy, "slope", "N/A")
-                params["Intercept"] = getattr(self._strategy, "intercept", "N/A")
+                params["Slope"] = getattr(self.strategy, "slope", "N/A")
+                params["Intercept"] = getattr(self.strategy, "intercept", "N/A")
 
             pd.Series(params).to_frame("Value").to_excel(writer, sheet_name="Parameters")
 
