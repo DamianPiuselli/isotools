@@ -8,7 +8,10 @@ The library supports multiple mathematical approaches to normalize raw machine v
 
 ### 1. Two-Point Linear Normalization
 The most common technique in stable isotope labs. It uses two standards with widely different isotopic values to solve for the linear compression/expansion of the scale:
-$$ \delta_{true} = m \cdot \delta_{raw} + b $$
+
+$$
+\delta_{true} = m \cdot \delta_{raw} + b
+$$
 
 ### 2. Multi-Point OLS
 For runs with 3 or more anchor standards, an Ordinary Least Squares (OLS) regression is used to determine the best-fit line.
