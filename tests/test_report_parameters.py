@@ -17,7 +17,7 @@ def test_parameters_sheet_drift_info(mock_get_std, tmp_path):
     }
     
     from isotools.models import ReferenceMaterial
-    mock_get_std.side_effect = lambda name: {
+    mock_get_std.side_effect = lambda name, *args, **kwargs: {
         "mar_h": ReferenceMaterial(name="Mar_H", d_true=0.0, u_true=0.1),
         "antartida_h": ReferenceMaterial(name="Antartida_H", d_true=-94.4, u_true=0.5)
     }.get(name.lower())

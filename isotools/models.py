@@ -18,6 +18,7 @@ class ReferenceMaterial:
     d_true: float  # Certified Delta Value
     u_true: float  # Certified Uncertainty (1 sigma)
     aliases: List[str] = field(default_factory=list)
+    target_column: str = ""  # Associated isotope target column (e.g., d2h, d18o, d15n)
 
     # Internal cache for fast lookups
     _lookup_set: Set[str] = field(init=False, repr=False)

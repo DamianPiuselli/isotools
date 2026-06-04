@@ -6,51 +6,256 @@
     <title>Isotools Report - {{ system_name }}</title>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; }
-        .header { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .header h1 { margin: 0 0 10px 0; color: #0056b3; }
-        .metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 0.9em; color: #666; }
-        .alert-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 4px; }
-        .alert-box h2 { margin-top: 0; color: #856404; font-size: 1.2em; }
-        .section { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .section h2 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; color: #333; }
-        .plot-container { width: 100%; height: 500px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
-        th { background-color: #f1f1f1; font-weight: 600; }
-        tr:hover { background-color: #f9f9f9; }
-        .badge { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 600; }
-        .badge-success { background-color: #d4edda; color: #155724; }
-        .badge-danger { background-color: #f8d7da; color: #721c24; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #eff6ff;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --success-bg: #ecfdf5;
+            --danger: #ef4444;
+            --danger-bg: #fef2f2;
+            --warning: #f59e0b;
+            --warning-bg: #fffbeb;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.5;
+            color: var(--text);
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 30px 20px;
+            background-color: var(--bg);
+        }
+
+        /* Header block with elegant gradient styling */
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #ffffff;
+            padding: 35px 40px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(37, 99, 235, 0.15) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            margin: 0 0 15px 0;
+            font-size: 2.25rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            background: linear-gradient(to right, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+
+        .metadata-item strong {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        /* Alert Section styling */
+        .alert-box {
+            background-color: var(--warning-bg);
+            border-left: 6px solid var(--warning);
+            padding: 24px;
+            margin-bottom: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .alert-box h2 {
+            margin-top: 0;
+            color: #92400e;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Section layout */
+        .section {
+            background: var(--surface);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .section:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        .section h2 {
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #1e293b;
+            border-bottom: 2px solid var(--bg);
+            padding-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Plot layout - Responsive Flex */
+        .plot-container {
+            width: 100%;
+            min-height: 480px;
+            background-color: #ffffff;
+            border-radius: 8px;
+        }
+
+        /* Beautiful tables */
+        table.table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 15px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        table.table th, table.table td {
+            text-align: left;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        table.table th {
+            background-color: #f8fafc;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        table.table tr:last-child td {
+            border-bottom: none;
+        }
+
+        table.table tr:hover td {
+            background-color: #f8fafc;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        .badge-success {
+            background-color: var(--success-bg);
+            color: var(--success);
+            border: 1px solid #a7f3d0;
+        }
+
+        .badge-danger {
+            background-color: var(--danger-bg);
+            color: var(--danger);
+            border: 1px solid #fecaca;
+        }
+
+        .no-data-msg {
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 10px 0;
+        }
+
+        /* Responsive Grid for charts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(550px, 1fr));
+            gap: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .metadata {
+                grid-template-columns: 1fr;
+            }
+            body {
+                padding: 15px 10px;
+            }
+            .header {
+                padding: 25px 20px;
+            }
+        }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h1>Isotools Report</h1>
+    <h1>Isotools Analytical Report</h1>
     <div class="metadata">
-        <div><strong>System:</strong> {{ system_name }}</div>
-        <div><strong>Date:</strong> {{ date }}</div>
-        <div><strong>File:</strong> {{ filepath }}</div>
-        <div><strong>Strategy:</strong> {{ strategy_name }}</div>
+        <div class="metadata-item"><strong>Isotope System:</strong> {{ system_name }}</div>
+        <div class="metadata-item"><strong>Analysis Date:</strong> {{ date }}</div>
+        <div class="metadata-item"><strong>Source File:</strong> {{ filepath }}</div>
+        <div class="metadata-item"><strong>Calibration Strategy:</strong> {{ strategy_name }}</div>
     </div>
 </div>
 
 {% if alerts %}
 <div class="alert-box">
-    <h2><span style="margin-right: 10px;">⚠️</span>Data Alerts</h2>
-    <table>
+    <h2>⚠️ Automated Data Diagnostics & Alerts</h2>
+    <table class="table">
         <thead>
             <tr>
-                <th>Row</th>
-                <th>Sample Name</th>
-                <th>Reason</th>
+                <th style="width: 10%;">Row</th>
+                <th style="width: 25%;">Sample Identifier</th>
+                <th>Diagnostic Reason / Recommendation</th>
             </tr>
         </thead>
         <tbody>
             {% for alert in alerts %}
             <tr>
-                <td>{{ alert.row }}</td>
+                <td><strong>{{ alert.row }}</strong></td>
                 <td>{{ alert.sample_name }}</td>
                 <td>{{ alert.reason }}</td>
             </tr>
@@ -60,36 +265,38 @@
 </div>
 {% endif %}
 
-{% if drift_monitors_set %}
-<div class="section">
-    <h2>
-        Drift Analysis
-        {% if drift_correction_applied %}
-            <span class="badge badge-success" style="float: right;">Drift Correction Applied</span>
-        {% else %}
-            <span class="badge badge-danger" style="float: right;">No Drift Correction Applied</span>
-        {% endif %}
-    </h2>
-    <div class="plot-container">{{ drift_plot_html | safe }}</div>
+<div class="grid-2">
+    {% if drift_monitors_set %}
+    <div class="section">
+        <h2>
+            Analytical Drift Analysis
+            {% if drift_correction_applied %}
+                <span class="badge badge-success">Drift Correction Applied</span>
+            {% else %}
+                <span class="badge badge-danger">No Drift Correction Applied</span>
+            {% endif %}
+        </h2>
+        <div class="plot-container">{{ drift_plot_html | safe }}</div>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>Calibration Curve</h2>
+        <div class="plot-container">{{ cal_plot_html | safe }}</div>
+    </div>
 </div>
-{% endif %}
 
 <div class="section">
-    <h2>Calibration Curve</h2>
-    <div class="plot-container">{{ cal_plot_html | safe }}</div>
-</div>
-
-<div class="section">
-    <h2>Results</h2>
+    <h2>Processed Results</h2>
     {{ results_table_html | safe }}
 </div>
 
 <div class="section">
-    <h2>QA/QC Summary</h2>
+    <h2>Quality Control (QA/QC) Summary</h2>
     {% if qaqc_table_html %}
         {{ qaqc_table_html | safe }}
     {% else %}
-        <p>No QC standards found in this run.</p>
+        <p class="no-data-msg">No Quality Control standards (trueness monitors) were registered in this analytical run.</p>
     {% endif %}
 </div>
 

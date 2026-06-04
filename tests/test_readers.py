@@ -72,3 +72,23 @@ def test_reader_validation_fails_on_missing_columns(mock_read_excel, mock_config
     reader = IsodatReader(mock_config)
     with pytest.raises(ValueError, match="Missing ESSENTIAL columns"):
         reader.read("missing_cols.xls")
+
+
+@patch("pandas.read_excel")
+def test_reader_case_and_space_insensitivity(mock_read_excel, mock_config):
+    """Test that column validation succeeds even with different case and spacing."""
+    raw_data = {
+        "rawname": ["Std A", "Sample B"],
+        "RAW  val": [10.0, 5.0],
+        "row": [1, 2],
+    }
+    mock_read_excel.return_value = pd.DataFrame(raw_data)
+
+    reader = IsodatReader(mock_config)
+    df = reader.read("dummy.xls")
+
+    assert "sample_name" in df.columns
+    assert "val" in df.columns
+    assert "row" in df.columns
+    assert df.iloc[0]["sample_name"] == "Std A"
+    assert df.iloc[0]["val"] == 10.0

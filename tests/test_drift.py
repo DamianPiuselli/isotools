@@ -28,7 +28,7 @@ def test_drift_calculation(mock_read, drift_data):
     with patch("isotools.core.get_standard") as mock_get_std:
         from isotools.models import ReferenceMaterial
         BA = ReferenceMaterial(name="Buenos Aires", d_true=-40.0, u_true=0.5, aliases=["buenos aires"])
-        mock_get_std.side_effect = lambda name: BA if name.lower() == "buenos aires" else None
+        mock_get_std.side_effect = lambda name, *args, **kwargs: BA if name.lower() == "buenos aires" else None
         
         batch = Batch("dummy.xls", config=WATER_H)
         batch.set_drift_monitors(["Buenos Aires"])

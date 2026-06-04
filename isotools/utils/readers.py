@@ -51,15 +51,24 @@ class IsodatReader:
         # Isodat often outputs "Ampl  28" with two spaces.
         df.columns = df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
 
-        # 3. Validate Columns
+        # 3. Validate and Rename Columns Case-Insensitively
         # We distinguish between 'Essential' (required for logic) and 'Optional' (contextual)
         essential_internal_names = ["sample_name", "row", "peak_nr", self.config.target_column]
 
+        # Build normalized lookups for existing columns: normalized_header -> original_header
+        df_cols_norm = {col.lower().replace(" ", ""): col for col in df.columns}
+
+        # Build dynamic mapping from original header in df to internal name
+        dynamic_mapping = {}
         missing_essential = []
         missing_optional = []
 
         for raw_col, internal_name in self.config.column_mapping.items():
-            if raw_col not in df.columns:
+            raw_col_norm = raw_col.lower().replace(" ", "")
+            if raw_col_norm in df_cols_norm:
+                actual_col = df_cols_norm[raw_col_norm]
+                dynamic_mapping[actual_col] = internal_name
+            else:
                 if internal_name in essential_internal_names:
                     missing_essential.append(raw_col)
                 else:
@@ -77,8 +86,8 @@ class IsodatReader:
                 "Calculations will proceed but some metadata may be lost."
             )
 
-        # 4. Rename Columns using Config
-        df = df.rename(columns=self.config.column_mapping)
+        # 4. Rename Columns using Dynamic Case-Insensitive Mapping
+        df = df.rename(columns=dynamic_mapping)
 
         # 5. Standardize Sample Names (String cleanup)
         if "sample_name" in df.columns:

@@ -208,3 +208,20 @@ def test_batch_save_report(mock_read, mock_isodat_file, tmp_path):
     xls = pd.ExcelFile(report_path)
     assert "Results" in xls.sheet_names
     assert "Parameters" in xls.sheet_names
+
+
+def test_standard_alias_resolution_disambiguation():
+    """Verify that get_standard correctly disambiguates standards with the same alias based on target_column."""
+    from isotools.standards import get_standard
+
+    # "Mar" has aliases for both H and O
+    std_h = get_standard("Mar", target_column="d2h")
+    std_o = get_standard("Mar", target_column="d18o")
+
+    assert std_h is not None
+    assert std_h.name == "Mar_H"
+    assert std_h.d_true == -0.49
+
+    assert std_o is not None
+    assert std_o.name == "Mar_O"
+    assert std_o.d_true == -0.027

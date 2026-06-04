@@ -182,7 +182,7 @@ class Batch:
         """Helper to look up standard objects from the registry."""
         resolved = {}
         for name in names:
-            std = get_standard(name)
+            std = get_standard(name, target_column=self.config.target_column)
             if not std:
                 raise ValueError(
                     f"Standard '{name}' not found in library. Please define it manually."
