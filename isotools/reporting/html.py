@@ -1,8 +1,10 @@
 """
 HTML reporting module using Plotly and Jinja2.
 """
+import base64
 import os
 from datetime import datetime
+from typing import Optional
 import pandas as pd
 from scipy import stats as sp_stats
 import numpy as np
@@ -12,6 +14,30 @@ from jinja2 import Environment, FileSystemLoader
 
 # Set default plotly template
 pio.templates.default = "plotly_white"
+
+
+def _get_logo_base64() -> Optional[str]:
+    """Loads and encodes the LIH laboratory logo as a base64 Data URI."""
+    logo_path = os.path.join(os.path.dirname(__file__), "assets", "isologo_lih.jpg")
+    if not os.path.exists(logo_path):
+        return None
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(logo_path)
+        img.thumbnail((350, 140))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=92)
+        b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/jpeg;base64,{b64_str}"
+    except Exception:
+        try:
+            with open(logo_path, "rb") as f:
+                b64_str = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:image/jpeg;base64,{b64_str}"
+        except Exception:
+            return None
+
 
 
 def _create_drift_plot(batch) -> str:
@@ -390,8 +416,10 @@ def generate_html_report(batch, filepath: str):
 
     # Metadata & Decision Audit Context
     context = {
+        "logo_b64": _get_logo_base64(),
         "system_name": batch.config.name,
         "filename": batch.filename,
+
         "filepath": batch.filepath,
         "acquisition_date": batch.acquisition_date,
         "processing_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -635,7 +663,9 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
         }
 
     context = {
+        "logo_b64": _get_logo_base64(),
         "title": title,
+
         "filename": f"{batch1.filename} / {batch2.filename}",
         "acquisition_date": batch1.acquisition_date,
         "processing_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
