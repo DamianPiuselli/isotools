@@ -153,9 +153,87 @@ def _create_calibration_plot(batch) -> str:
     if anchor_data.empty:
         return "<p>No anchor data found.</p>"
 
-    anchor_data["d_true"] = anchor_data["canonical_name"].apply(lambda x: batch.anchors[x].d_true)
+    # Specialized Plot Choice for SinglePointOffset (1 Anchor Standard)
+    if batch.strategy.__class__.__name__ == "SinglePointOffset" or anchor_data["canonical_name"].nunique() == 1:
+        fig = go.Figure()
+        anchor_names = anchor_data["canonical_name"].unique().tolist()
+        
+        for name in anchor_names:
+            group = anchor_data[anchor_data["canonical_name"] == name]
+            std_obj = batch.anchors[name]
+            d_true = std_obj.d_true
+            mean_meas = float(group["working_value"].mean())
+            std_meas = float(group["working_value"].std()) if len(group) > 1 else 0.0
 
+            # 1. Scatter Anchor Replicates by Injection Row
+            fig.add_trace(go.Scatter(
+                x=group["row"].tolist(),
+                y=group["working_value"].tolist(),
+                mode='markers+lines',
+                name=f'{name} Measured Replicates',
+                marker=dict(size=10, color='#2563eb', line=dict(width=1, color='DarkSlateGrey')),
+                line=dict(color='#93c5fd', width=1.5, dash='dot'),
+                text=group["sample_name"].tolist(),
+                hovertemplate="<b>Row %{x} (%{text})</b><br>Measured Working δ: %{y:.3f} ‰<extra></extra>"
+            ))
+
+            # 2. Horizontal Reference Lines (Certified True vs Mean Measured)
+            x_min, x_max = float(valid_data["row"].min()), float(valid_data["row"].max())
+            x_pad = (x_max - x_min) * 0.05 if x_max != x_min else 1.0
+
+            # Certified True Value Line
+            fig.add_shape(
+                type="line",
+                x0=x_min - x_pad, x1=x_max + x_pad,
+                y0=d_true, y1=d_true,
+                line=dict(color="#059669", width=2, dash="dash"),
+            )
+
+            # Mean Measured Working Line
+            fig.add_shape(
+                type="line",
+                x0=x_min - x_pad, x1=x_max + x_pad,
+                y0=mean_meas, y1=mean_meas,
+                line=dict(color="#2563eb", width=1.5, dash="dashdot"),
+            )
+
+            offset_val = getattr(batch.strategy, "offset", d_true - mean_meas)
+            eq_text = (
+                f"<b>Single-Point Offset Normalization</b><br>"
+                f"<b>Anchor Standard:</b> {name}<br>"
+                f"<b>Certified True Value (δ<sub>true</sub>):</b> {d_true:.2f} ‰<br>"
+                f"<b>Mean Measured (δ<sub>meas</sub>):</b> {mean_meas:.3f} ± {std_meas:.3f} ‰<br>"
+                f"<b>Applied Constant Offset (Δδ):</b> {offset_val:+.3f} ‰"
+            )
+
+            fig.add_annotation(
+                xref="paper", yref="paper",
+                x=0.02, y=0.95,
+                text=eq_text,
+                showarrow=False,
+                align="left",
+                bgcolor="rgba(255, 255, 255, 0.88)",
+                bordercolor="#cbd5e1",
+                borderwidth=1,
+                font=dict(size=10)
+            )
+
+        fig.update_layout(
+            autosize=True,
+            title=f"Single-Point Offset Normalization ({batch.config.name})",
+            xaxis_title="Injection Sequence (Row)",
+            yaxis_title=f"Pre-Calibration δ ({batch.config.target_column})",
+            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+            margin=dict(l=60, r=40, t=60, b=90),
+            hovermode="closest",
+            plot_bgcolor="white"
+        )
+        return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
+
+    # Multi-point Linear Regression Plot (TwoPointLinear / MultiPointLinear)
+    anchor_data["d_true"] = anchor_data["canonical_name"].apply(lambda x: batch.anchors[x].d_true)
     fig = go.Figure()
+
 
     # 1. Scatter Individual Replicates
     for name, group in anchor_data.groupby("canonical_name"):
