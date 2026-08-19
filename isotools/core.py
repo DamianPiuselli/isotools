@@ -276,9 +276,26 @@ class Batch:
                     }
                 )
 
+        # --- 4. Single Replicate Check (n=1) ---
+        if not getattr(self, "use_method_precision", False):
+            prec = self.config.method_precision if self.config.method_precision > 0 else 0.10
+            counts = valid.groupby("sample_name")["working_value"].count()
+            single_reps = counts[counts == 1].index.tolist()
+            for sname in single_reps:
+                sample_rows = valid[valid["sample_name"] == sname]
+                r_num = sample_rows["row"].iloc[0] if not sample_rows.empty else -1
+                alerts.append(
+                    {
+                        "row": r_num,
+                        "sample_name": sname,
+                        "reason": f"Single Replicate (n=1): Defaulted to instrumental method precision (1-σ = {prec:.2f} ‰) for uncertainty propagation.",
+                    }
+                )
+
         self._alerts = pd.DataFrame(alerts)
         if not self._alerts.empty:
             self._alerts = self._alerts.drop_duplicates()
+
 
 
     # --- Data Cleaning ---

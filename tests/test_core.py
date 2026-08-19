@@ -247,3 +247,18 @@ def test_single_replicate_uncertainty_fallback(mock_read):
     assert not pd.isna(unc)
     assert unc > 0
 
+    # Verify diagnostic alert was raised on batch.alerts for SingleSample
+    alerts = batch.alerts
+    assert not alerts.empty
+    reasons = " ".join(alerts[alerts["sample_name"] == "SingleSample"]["reason"].tolist())
+    assert "Single Replicate (n=1)" in reasons
+
+    # Verify that when use_method_precision=True, no fallback alert is raised
+    batch2 = Batch("dummy.xls", config=NITROGEN)
+    batch2.set_anchors(["USGS32", "USGS34"])
+    batch2.process(TwoPointLinear(), use_method_precision=True)
+    alerts2 = batch2.alerts
+    reasons2 = " ".join(alerts2[alerts2["sample_name"] == "SingleSample"]["reason"].tolist()) if not alerts2.empty else ""
+    assert "Single Replicate (n=1)" not in reasons2
+
+
