@@ -74,16 +74,21 @@ def test_blank_correction_seq2():
 def test_full_carbon_pipeline():
     batch = Batch(FILE_SEQ1, CARBON_13C)
 
-    # Exclude empty runs
-    batch.exclude_rows([1, 21])
+    # Exclude conditioning samples and empty rows
+    batch.exclude_rows([1, 2, 3, 4, 5, 21])
 
     # 1. Blank correction
     batch.apply_blank_correction(blank_identifier="bco cap")
 
-    # 2. Set NIST8541 as Anchor
+    # 2. Linearity correction
+    batch.apply_linearity_correction(substance_name="ac benzoico")
+    assert batch.linearity_correction_applied is True
+    assert batch.linearity_slope < 0.0
+
+    # 3. Set NIST8541 as Anchor
     batch.set_anchors(["8541"])
 
-    # 3. Fit SinglePointOffset strategy
+    # 4. Fit SinglePointOffset strategy
     strategy = SinglePointOffset()
     batch.process(strategy)
 
@@ -94,3 +99,4 @@ def test_full_carbon_pipeline():
     # Verify NIST8541 corrected mean is calibrated to -16.05
     nist_corr = batch.summary.loc["NIST8541", "corrected_d13c"]
     assert pytest.approx(nist_corr, abs=0.05) == -16.05
+
