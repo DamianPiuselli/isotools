@@ -90,14 +90,22 @@
         <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
             <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">5. ISO 17025 Uncertainty Budget</h3>
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Evaluation Model:</strong> Numerical Kragten Differentiation</p>
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Uncertainty Method:</strong> 
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Uncertainty Basis:</strong> 
                 {% if use_method_precision %}
-                    Method Precision (σ / √n) [1-σ = {{ method_precision }} ‰]
+                    Instrumental / Method Precision
                 {% else %}
-                    Sample Repeatability (SEM)
+                    Sample Repeatability (Replicate SEM)
                 {% endif %}
             </p>
+            {% if use_method_precision %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Instrumental Precision (1-σ):</strong> {{ method_precision }} ‰</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Calculation:</strong> u = σ<sub>inst</sub> / √n</p>
+            {% else %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Sample Repeatability (SEM):</strong> Standard Error of Sample Replicates (u = s / √n)</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Instrumental Precision (1-σ):</strong> {{ method_precision }} ‰ (used if n = 1)</p>
+            {% endif %}
         </div>
+
     </div>
 </details>
 

@@ -99,7 +99,8 @@
             {% if iso1.strategy_slope is not none %}
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Fit Equation:</strong> Measured = {{ "%.4f"|format(iso1.strategy_slope) }} × True + {{ "%.4f"|format(iso1.strategy_intercept) }} (R² = {{ "%.4f"|format(iso1.strategy_r2) }})</p>
             {% endif %}
-            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Uncertainty Method:</strong> {{ "Method Precision (σ / √n)" if iso1.use_method_precision else "Sample Repeatability (SEM)" }} (1-σ = {{ iso1.method_precision }} ‰)</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Uncertainty Basis:</strong> {{ "Instrumental / Method Precision" if iso1.use_method_precision else "Sample Repeatability (Replicate SEM)" }}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Instrumental Precision (1-σ):</strong> {{ iso1.method_precision }} ‰</p>
         </div>
 
         <!-- System 2 Lineage Card -->
@@ -137,8 +138,10 @@
             {% if iso2.strategy_slope is not none %}
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Fit Equation:</strong> Measured = {{ "%.4f"|format(iso2.strategy_slope) }} × True + {{ "%.4f"|format(iso2.strategy_intercept) }} (R² = {{ "%.4f"|format(iso2.strategy_r2) }})</p>
             {% endif %}
-            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Uncertainty Method:</strong> {{ "Method Precision (σ / √n)" if iso2.use_method_precision else "Sample Repeatability (SEM)" }} (1-σ = {{ iso2.method_precision }} ‰)</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Uncertainty Basis:</strong> {{ "Instrumental / Method Precision" if iso2.use_method_precision else "Sample Repeatability (Replicate SEM)" }}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Instrumental Precision (1-σ):</strong> {{ iso2.method_precision }} ‰</p>
         </div>
+
     </div>
 </details>
 
