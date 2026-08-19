@@ -30,6 +30,7 @@ def test_carbon_config_and_standards():
     assert std.u_true == 0.04
 
 
+@pytest.mark.skipif(not os.path.exists(FILE_SEQ2), reason="Local particulate data files not present")
 def test_particulate_sequence_reading_and_double_drop_alerts():
     batch = Batch(FILE_SEQ2, CARBON_13C)
     assert not batch.replicates.empty
@@ -50,6 +51,7 @@ def test_particulate_sequence_reading_and_double_drop_alerts():
     assert 21 in flagged_rows
 
 
+@pytest.mark.skipif(not os.path.exists(FILE_SEQ2), reason="Local particulate data files not present")
 def test_blank_correction_seq2():
     batch = Batch(FILE_SEQ2, CARBON_13C)
 
@@ -71,7 +73,9 @@ def test_blank_correction_seq2():
     assert pytest.approx(d_corr_val, abs=0.01) == 8.562
 
 
+@pytest.mark.skipif(not os.path.exists(FILE_SEQ1), reason="Local particulate data files not present")
 def test_full_carbon_pipeline():
+
     batch = Batch(FILE_SEQ1, CARBON_13C)
 
     # Exclude conditioning samples and empty rows
