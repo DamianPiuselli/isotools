@@ -294,8 +294,10 @@
             {% endif %}
 
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (" + iso1.linearity_substance_used + ")" if iso1.linearity_correction_applied else "Not Applied" }}</p>
+
             {% if iso1.linearity_correction_applied and iso1.linearity_slope is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.5f"|format(iso1.linearity_slope) }} ‰/unit</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Source:</strong> {{ iso1.linearity_source }}</p>
             {% if iso1.linearity_ci95 is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.5f"|format(iso1.linearity_slope - iso1.linearity_ci95) }}, {{ "%.5f"|format(iso1.linearity_slope + iso1.linearity_ci95) }}]</p>
             {% endif %}
@@ -303,7 +305,6 @@
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso1.linearity_p_value) if iso1.linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(iso1.linearity_area_ref) }}</p>
-
             {% endif %}
 
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Strategy:</strong> {{ iso1.strategy_name }} (Anchors: {{ iso1.anchors }})</p>
@@ -334,6 +335,7 @@
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (" + iso2.linearity_substance_used + ")" if iso2.linearity_correction_applied else "Not Applied" }}</p>
             {% if iso2.linearity_correction_applied and iso2.linearity_slope is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.5f"|format(iso2.linearity_slope) }} ‰/unit</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Source:</strong> {{ iso2.linearity_source }}</p>
             {% if iso2.linearity_ci95 is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.5f"|format(iso2.linearity_slope - iso2.linearity_ci95) }}, {{ "%.5f"|format(iso2.linearity_slope + iso2.linearity_ci95) }}]</p>
             {% endif %}
@@ -341,8 +343,8 @@
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso2.linearity_p_value) if iso2.linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(iso2.linearity_area_ref) }}</p>
-
             {% endif %}
+
 
 
 

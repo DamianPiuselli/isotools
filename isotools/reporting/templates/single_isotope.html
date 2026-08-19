@@ -365,6 +365,7 @@
             </p>
             {% if linearity_correction_applied and linearity_slope is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.5f"|format(linearity_slope) }} ‰/unit</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Source:</strong> {{ linearity_source }}</p>
             {% if linearity_ci95 is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.5f"|format(linearity_slope - linearity_ci95) }}, {{ "%.5f"|format(linearity_slope + linearity_ci95) }}]</p>
             {% endif %}
@@ -372,8 +373,8 @@
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(linearity_p_value) if linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(linearity_area_ref) }}</p>
-
             {% endif %}
+
         </div>
 
 

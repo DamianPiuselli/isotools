@@ -211,39 +211,61 @@ def _create_linearity_plot(batch) -> str:
     fig = go.Figure()
 
     substance = getattr(batch, "linearity_substance_used", None)
-    if substance and substance in valid_data["sample_name"].values:
-        sub_data = valid_data[valid_data["sample_name"] == substance]
-    else:
+    sub_data = pd.DataFrame()
+
+    if substance:
+        s_lower = substance.strip().lower()
+        mask = valid_data["sample_name"].str.strip().str.lower() == s_lower
+        if not mask.any():
+            for name in valid_data["sample_name"].unique():
+                n_lower = name.strip().lower()
+                if s_lower in n_lower or n_lower in s_lower or (
+                    ("ac" in s_lower or "bz" in s_lower or "benzo" in s_lower) and
+                    ("ac" in n_lower or "bz" in n_lower or "benzo" in n_lower)
+                ):
+                    mask = valid_data["sample_name"] == name
+                    break
+        if mask.any():
+            sub_data = valid_data[mask]
+
+    # If no specific substance matched, default to valid_data only if substance was not specified
+    if sub_data.empty and not substance:
         sub_data = valid_data
 
-    # Determine which Y series to plot (the series that was actually regressed)
-    if "pre_linearity_working_value" in sub_data.columns:
-        y_col = "pre_linearity_working_value"
-        y_label = "Blank-Corrected δ (‰)" if batch.blank_correction_applied else "Working δ (‰)"
-    elif "working_value" in sub_data.columns:
-        y_col = "working_value"
-        y_label = "Working δ (‰)"
+    # Determine which Y series to plot
+    if not sub_data.empty:
+        if "pre_linearity_working_value" in sub_data.columns:
+            y_col = "pre_linearity_working_value"
+            y_label = "Blank-Corrected δ (‰)" if batch.blank_correction_applied else "Working δ (‰)"
+        elif "working_value" in sub_data.columns:
+            y_col = "working_value"
+            y_label = "Working δ (‰)"
+        else:
+            y_col = batch.config.target_column
+            y_label = f"Raw {batch.config.target_column} (‰)"
+
+        for name, group in sub_data.groupby("sample_name"):
+            fig.add_trace(go.Scatter(
+                x=group[area_col].tolist(),
+                y=group[y_col].tolist(),
+                mode='markers',
+                name=name,
+                marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')),
+                text=group["row"].tolist(),
+                hovertemplate="<b>Row %{text}</b><br>Area: %{x}<br>Delta: %{y:.3f} ‰<extra></extra>"
+            ))
+
+        x_vals = pd.to_numeric(sub_data[area_col], errors='coerce').dropna().tolist()
+        y_vals = pd.to_numeric(sub_data[y_col], errors='coerce').dropna().tolist()
     else:
-        y_col = batch.config.target_column
-        y_label = f"Raw {batch.config.target_column} (‰)"
-
-    for name, group in sub_data.groupby("sample_name"):
-        fig.add_trace(go.Scatter(
-            x=group[area_col].tolist(),
-            y=group[y_col].tolist(),
-            mode='markers',
-            name=name,
-            marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')),
-            text=group["row"].tolist(),
-            hovertemplate="<b>Row %{text}</b><br>Area: %{x}<br>Delta: %{y:.3f} ‰<extra></extra>"
-        ))
-
-    x_vals = pd.to_numeric(sub_data[area_col], errors='coerce').dropna().tolist()
-    y_vals = pd.to_numeric(sub_data[y_col], errors='coerce').dropna().tolist()
+        x_vals, y_vals = [], []
+        y_label = "δ (‰)"
 
     slope = getattr(batch, "linearity_slope", None)
     ci_95 = getattr(batch, "linearity_ci95", None)
     r2 = getattr(batch, "linearity_r2", None)
+    is_direct = getattr(batch, "linearity_is_direct", False)
+    area_ref = getattr(batch, 'linearity_area_ref', 'N/A')
 
     if slope is not None and len(x_vals) >= 2:
         x_min, x_max = float(min(x_vals)), float(max(x_vals))
@@ -263,21 +285,53 @@ def _create_linearity_plot(batch) -> str:
             hoverinfo='skip'
         ))
 
-        ci_str = f"± {ci_95:.5f}" if ci_95 is not None else "N/A"
-        r2_str = f"{r2:.4f}" if r2 is not None else "N/A"
+        if is_direct:
+            eq_text = (
+                f"<b>Linearity Slope:</b> {slope:.5f} ‰/unit<br>"
+                f"<b>Source:</b> Direct Input (Transferred Slope)<br>"
+                f"<b>Ref Area (A<sub>ref</sub>):</b> {area_ref}"
+            )
+        else:
+            ci_str = f"± {ci_95:.5f}" if ci_95 is not None else "N/A"
+            r2_str = f"{r2:.4f}" if r2 is not None else "N/A"
+            eq_text = (
+                f"<b>Slope:</b> {slope:.5f} ‰/unit<br>"
+                f"<b>95% CI:</b> {ci_str}<br>"
+                f"<b>R²:</b> {r2_str}<br>"
+                f"<b>Ref Area (A<sub>ref</sub>):</b> {area_ref}"
+            )
 
-        eq_text = f"Slope = {slope:.5f} ‰/unit<br>95% CI = {ci_str}<br>R² = {r2_str}<br>Ref Area = {getattr(batch, 'linearity_area_ref', 'N/A')}"
         fig.add_annotation(
             xref="paper", yref="paper",
             x=0.02, y=0.95,
             text=eq_text,
             showarrow=False,
             align="left",
-            bgcolor="rgba(255, 255, 255, 0.8)",
+            bgcolor="rgba(255, 255, 255, 0.85)",
             bordercolor="black",
             borderwidth=1,
             font=dict(size=10)
         )
+    elif slope is not None and is_direct:
+        # Direct input slope applied, but no multi-point calibration range in this batch
+        eq_text = (
+            f"<b>Linearity Correction Applied</b><br>"
+            f"<b>Slope:</b> {slope:.5f} ‰/unit<br>"
+            f"<b>Source:</b> Direct Input (Transferred from Characterization Run)<br>"
+            f"<b>Ref Area (A<sub>ref</sub>):</b> {area_ref}"
+        )
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=0.02, y=0.95,
+            text=eq_text,
+            showarrow=False,
+            align="left",
+            bgcolor="rgba(255, 255, 255, 0.85)",
+            bordercolor="black",
+            borderwidth=1,
+            font=dict(size=10)
+        )
+
 
     if x_vals and y_vals:
         x_min, x_max = float(min(x_vals)), float(max(x_vals))
@@ -359,6 +413,9 @@ def generate_html_report(batch, filepath: str):
         "linearity_r2": getattr(batch, "linearity_r2", None),
         "linearity_substance_used": getattr(batch, "linearity_substance_used", "None"),
         "linearity_area_ref": getattr(batch, "linearity_area_ref", None),
+        "linearity_is_direct": getattr(batch, "linearity_is_direct", False),
+        "linearity_source": getattr(batch, "linearity_source", "Inferred from Run Replicates"),
+
 
 
         "use_method_precision": getattr(batch, "use_method_precision", False),
@@ -560,6 +617,9 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
             "linearity_r2": getattr(b, "linearity_r2", None),
             "linearity_substance_used": getattr(b, "linearity_substance_used", "None"),
             "linearity_area_ref": getattr(b, "linearity_area_ref", None),
+            "linearity_is_direct": getattr(b, "linearity_is_direct", False),
+            "linearity_source": getattr(b, "linearity_source", "Inferred from Run Replicates"),
+
 
 
             "use_method_precision": getattr(b, "use_method_precision", False),

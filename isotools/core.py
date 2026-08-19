@@ -563,6 +563,9 @@ class Batch:
         p_val = None
         r2 = None
 
+        is_direct = slope is not None
+        source_str = "Direct Input (Transferred Slope)" if is_direct else "Inferred from Run Replicates"
+
         if slope is None:
             if not substance_name:
                 raise ValueError("Must provide either a direct 'slope' or a 'substance_name' to infer slope.")
@@ -602,6 +605,8 @@ class Batch:
         self.linearity_r2 = r2
         self.linearity_substance_used = substance_name or "Manual Input"
         self.linearity_area_ref = area_ref
+        self.linearity_is_direct = is_direct
+        self.linearity_source = source_str
         self.linearity_info = {
             "slope": slope,
             "ci_95": ci_95,
@@ -609,8 +614,11 @@ class Batch:
             "r_squared": r2,
             "substance": substance_name or "Manual Input",
             "area_ref": area_ref,
-            "area_column": area_col
+            "area_column": area_col,
+            "is_direct": is_direct,
+            "source": source_str
         }
+
 
         # Invalidate summary cache
         self.summary = None
@@ -952,8 +960,10 @@ class Batch:
                 "Linearity Correction Applied": self.linearity_correction_applied,
                 "Linearity Slope": self.linearity_slope if self.linearity_correction_applied else "None",
                 "Linearity Slope 95% CI": getattr(self, "linearity_ci95", "None") if self.linearity_correction_applied else "None",
+                "Linearity Slope Source": getattr(self, "linearity_source", "None") if self.linearity_correction_applied else "None",
                 "Linearity Reference Substance": self.linearity_substance_used if self.linearity_correction_applied else "None",
                 "Linearity Ref Area": self.linearity_area_ref if self.linearity_correction_applied else "None",
+
 
                 "Blank Correction Applied": self.blank_correction_applied,
                 "Blank Identifier": self.blank_info["identifier"] if self.blank_correction_applied and self.blank_info else "None",
