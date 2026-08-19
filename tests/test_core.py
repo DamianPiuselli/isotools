@@ -225,3 +225,25 @@ def test_standard_alias_resolution_disambiguation():
     assert std_o is not None
     assert std_o.name == "Mar_O"
     assert std_o.d_true == -0.027
+
+
+@patch("isotools.utils.readers.pd.read_excel")
+def test_single_replicate_uncertainty_fallback(mock_read):
+    """Test that samples with count == 1 fall back to instrument method precision and do not result in NaN uncertainty."""
+    data = {
+        "Identifier 1": ["USGS32", "USGS32", "USGS34", "USGS34", "SingleSample"],
+        "Peak Nr": [2, 2, 2, 2, 2],
+        "d 15N/14N": [180.0, 180.0, -1.8, -1.8, 50.0],
+        "Row": [1, 2, 3, 4, 5],
+    }
+    mock_read.return_value = pd.DataFrame(data)
+
+    batch = Batch("dummy.xls", config=NITROGEN)
+    batch.set_anchors(["USGS32", "USGS34"])
+    batch.process(TwoPointLinear())
+
+    assert "SingleSample" in batch.summary.index
+    unc = batch.summary.loc["SingleSample", "combined_uncertainty"]
+    assert not pd.isna(unc)
+    assert unc > 0
+

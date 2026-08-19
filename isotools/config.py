@@ -118,9 +118,11 @@ NITROGEN = SystemConfig(
     target_column="d15n",
     column_mapping=NITROGEN_MAPPING,
     filter_func=_filter_n2_peaks,
+    method_precision=0.15,
     amplitude_column="amp_28",
     absolute_range=(-20.0, 50.0),
 )
+
 
 WATER_H = SystemConfig(
     name="Water (2H)",

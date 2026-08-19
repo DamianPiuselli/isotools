@@ -871,9 +871,13 @@ class Batch:
         )
 
         # Optional Precision Override: use sigma / sqrt(n)
-        if use_method_precision and self.config.method_precision > 0:
-            anchor_stats["sem"] = self.config.method_precision / np.sqrt(
-                anchor_stats["count"]
+        prec = self.config.method_precision if self.config.method_precision > 0 else 0.10
+        if use_method_precision:
+            anchor_stats["sem"] = prec / np.sqrt(anchor_stats["count"])
+        else:
+            # Fallback for count == 1 or NaN sem: use instrument method precision / sqrt(n)
+            anchor_stats["sem"] = anchor_stats["sem"].fillna(
+                prec / np.sqrt(anchor_stats["count"])
             )
 
         # D. Fit the Strategy
@@ -915,10 +919,15 @@ class Batch:
             "working_value"
         ].agg(["mean", "sem", "count"])
 
-        if use_method_precision and self.config.method_precision > 0:
-            self.summary["sem"] = self.config.method_precision / np.sqrt(
-                self.summary["count"]
+        if use_method_precision:
+            self.summary["sem"] = prec / np.sqrt(self.summary["count"])
+        else:
+            # Fallback for count == 1 or NaN sem: use instrument method precision / sqrt(n)
+            self.summary["sem"] = self.summary["sem"].fillna(
+                prec / np.sqrt(self.summary["count"])
             )
+
+
 
         # G. Propagate Uncertainty (Sample Level)
         # strategy.propagate will add 'combined_uncertainty' and its own 'corrected_{target_col}'
