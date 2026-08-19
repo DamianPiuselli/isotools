@@ -93,8 +93,23 @@ class IsodatReader:
         if "sample_name" in df.columns:
             df["sample_name"] = df["sample_name"].astype(str).str.strip()
 
-        # 6. Apply System Filtering (e.g. Keep only Peak 2 for N2)
-        df = self.config.filter_func(df)
+        # Track raw row metadata before filtering
+        raw_rows_info = {}
+        missing_sample_info = {}
+        if "row" in df.columns:
+            all_raw_rows = set(df["row"].dropna().unique())
+            filtered_df = self.config.filter_func(df)
+            filtered_rows = set(filtered_df["row"].dropna().unique())
+            missing_rows = sorted(list(all_raw_rows - filtered_rows))
+            for r in missing_rows:
+                sub = df[df["row"] == r]
+                name = sub["sample_name"].iloc[0] if "sample_name" in sub.columns and not sub.empty else f"Row {r}"
+                missing_sample_info[r] = name
+            df = filtered_df
+            df.attrs["missing_sample_rows_info"] = missing_sample_info
+            df.attrs["all_raw_rows"] = sorted(list(all_raw_rows))
+        else:
+            df = self.config.filter_func(df)
 
         # 7. Apply User Exclusions (Manual Row IDs)
         # Assumes 'row' column exists from Isodat mapping
@@ -102,3 +117,4 @@ class IsodatReader:
             df = df[~df["row"].isin(exclude_rows)]
 
         return df
+

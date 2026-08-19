@@ -52,9 +52,14 @@ class Batch:
         self.drift_monitors: Dict[str, ReferenceMaterial] = {}  # Used for Drift Check
         self.drift_correction_applied = False
         self.drift_monitor_used: Optional[str] = None
+        self.blank_correction_applied = False
+        self.blank_info: Optional[Dict] = None
+        self.excluded_rows_list: List[int] = []
+        self.use_method_precision: bool = False
         self.summary: Optional[pd.DataFrame] = None
         self.strategy: Optional[CalibrationStrategy] = None
         self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
+
 
         # 3. Initial Diagnostics
         self.detect_outliers()
@@ -78,16 +83,78 @@ class Batch:
         """
         Runs automatic diagnostics to identify suspicious data points.
 
-        1. Range Check: Outside expected environmental values (on normalized data).
-        2. Precision Check: Sample SD > 3x method precision (on raw/drift-corrected data).
-        3. Amplitude Check: Amplitude < 50% or > 200% of run median.
+        1. Missing Sample Peak / Autosampler Drop Failure Check.
+        2. Double Drop / Abnormal Response Factor Check (Area/Amount).
+        3. Range Check: Outside expected environmental values (on normalized data).
+        4. Precision Check: Sample SD > 3x method precision (on raw/drift-corrected data).
+        5. Amplitude Check: Amplitude < 50% or > 200% of run median.
         """
         alerts = []
         valid = self.replicates[~self.replicates["excluded"]].copy()
 
+        # --- 0. Missing Sample Peak Check ---
+        missing_info = self.replicates.attrs.get("missing_sample_rows_info", {})
+        missing_rows_list = sorted(list(missing_info.keys()))
+        for r, name in missing_info.items():
+            alerts.append(
+                {
+                    "row": r,
+                    "sample_name": name,
+                    "reason": f"Missing Sample Peak: No sample peak detected for Row {r} ({name}). Suspected autosampler drop failure.",
+                }
+            )
+
         if valid.empty:
-            self._alerts = pd.DataFrame(columns=["row", "sample_name", "reason"])
+            self._alerts = pd.DataFrame(alerts)
+            if not self._alerts.empty:
+                self._alerts = pd.DataFrame(alerts).drop_duplicates()
             return
+
+        # --- 0b. Double Drop / Response Anomaly Check ---
+        # Find area column
+        possible_areas = []
+        if self.config.amplitude_column:
+            suffix = self.config.amplitude_column.split("_")[-1]
+            possible_areas.append(f"area_{suffix}")
+        possible_areas.extend(["area_44", "area_28", "area_2", "area_all"])
+
+        area_col = None
+        for col in possible_areas:
+            if col in valid.columns:
+                area_col = col
+                break
+
+        if "amount" in valid.columns and area_col:
+            # Filter rows with valid positive amount and area
+            weighed = valid[(valid["amount"].notna()) & (valid["amount"] > 0) & (valid[area_col].notna())].copy()
+            if not weighed.empty:
+                weighed["response"] = weighed[area_col] / weighed["amount"]
+                median_resp = weighed["response"].median()
+
+                if median_resp > 0:
+                    high_resp = weighed[weighed["response"] > 1.5 * median_resp]
+                    for _, row in high_resp.iterrows():
+                        r_num = row.get("row", -1)
+                        resp_val = row["response"]
+                        # Check if preceded by a missing sample peak row (e.g. row - 1 or row - 2)
+                        if (r_num - 1) in missing_rows_list or (r_num - 2) in missing_rows_list:
+                            reason = (
+                                f"Double Drop Suspected: Unusually high response factor "
+                                f"({resp_val:.0f} vs median {median_resp:.0f}) following missing sample peak."
+                            )
+                        else:
+                            reason = (
+                                f"Abnormal Area/Amount Ratio: Response factor "
+                                f"({resp_val:.0f}) > 1.5x run median ({median_resp:.0f}). Suspected double drop or weighing error."
+                            )
+
+                        alerts.append(
+                            {
+                                "row": r_num,
+                                "sample_name": row["sample_name"],
+                                "reason": reason,
+                            }
+                        )
 
         # --- 1. Range Check (Normalized only) ---
         target_col = self.config.target_column
@@ -147,6 +214,7 @@ class Batch:
         if not self._alerts.empty:
             self._alerts = self._alerts.drop_duplicates()
 
+
     # --- Data Cleaning ---
 
     def exclude_rows(self, row_ids: List[int]):
@@ -159,10 +227,12 @@ class Batch:
         if "row" in self.replicates.columns:
             mask = self.replicates["row"].isin(row_ids)
             self.replicates.loc[mask, "excluded"] = True
+            self.excluded_rows_list = sorted(list(set(self.excluded_rows_list + row_ids)))
             # Invalidate summary cache since data changed
             self.summary = None
         else:
             raise KeyError("Data does not contain 'row' column for exclusion.")
+
 
     # --- Standards Management ---
 
@@ -359,7 +429,69 @@ class Batch:
         # Invalidate summary cache
         self.summary = None
 
+    def apply_blank_correction(self, blank_identifier: str = "bco cap", area_column: Optional[str] = None):
+        """
+        Applies mass-balance blank correction to working values.
+
+        Formula:
+            A_net = A_raw - A_blk
+            d_corr = (A_raw * d_raw - A_blk * d_blk) / A_net
+
+        Args:
+            blank_identifier: Name (or partial alias) of the blank sample.
+            area_column: Specific area column to use. If None, auto-detected.
+        """
+        valid = self.replicates[~self.replicates["excluded"]].copy()
+
+        blank_mask = valid["sample_name"].str.strip().str.lower() == blank_identifier.strip().lower()
+        blank_rows = valid[blank_mask]
+
+        if blank_rows.empty:
+            raise ValueError(f"No valid rows matching blank identifier '{blank_identifier}' found.")
+
+        if area_column is None:
+            possible_areas = []
+            if self.config.amplitude_column:
+                suffix = self.config.amplitude_column.split("_")[-1]
+                possible_areas.append(f"area_{suffix}")
+            possible_areas.extend(["area_44", "area_28", "area_2", "area_all"])
+
+            for col in possible_areas:
+                if col in self.replicates.columns:
+                    area_column = col
+                    break
+
+        if not area_column or area_column not in self.replicates.columns:
+            raise KeyError("Could not auto-detect a valid 'area' column for blank correction.")
+
+        a_blk = blank_rows[area_column].mean()
+        a_blk_std = blank_rows[area_column].std()
+        d_blk = blank_rows["working_value"].mean()
+        d_blk_std = blank_rows["working_value"].std()
+
+        a_raw = self.replicates[area_column]
+        d_raw = self.replicates["working_value"]
+
+        a_net = a_raw - a_blk
+        d_corr = (a_raw * d_raw - a_blk * d_blk) / a_net
+
+        self.replicates["area_net"] = a_net
+        self.replicates["d_blank_corrected"] = d_corr
+        self.replicates["working_value"] = d_corr
+
+        self.blank_correction_applied = True
+        self.blank_info = {
+            "identifier": blank_identifier,
+            "area_column": area_column,
+            "mean_area": a_blk,
+            "std_area": a_blk_std,
+            "mean_delta": d_blk,
+            "std_delta": d_blk_std,
+        }
+        self.summary = None
+
     def plot_calibration(self, ax: Optional[plt.Axes] = None):
+
         """
         Plots the calibration curve showing all individual anchor replicates
         and the fitted calibration line.
@@ -455,6 +587,8 @@ class Batch:
         7. Refresh Diagnostics (Including Range Checks)
         """
         self.strategy = strategy
+        self.use_method_precision = use_method_precision
+
 
         # A. Run Diagnostics
         self.detect_outliers()
@@ -625,7 +759,10 @@ class Batch:
                 "Drift Monitors": ", ".join(self.drift_monitors.keys()),
                 "Drift Correction Applied": self.drift_correction_applied,
                 "Drift Monitor Used": self.drift_monitor_used if self.drift_correction_applied else "None",
+                "Blank Correction Applied": self.blank_correction_applied,
+                "Blank Identifier": self.blank_info["identifier"] if self.blank_correction_applied and self.blank_info else "None",
             }
+
             if self.strategy:
                 # Add fit parameters if available
                 params["Slope"] = getattr(self.strategy, "slope", "N/A")

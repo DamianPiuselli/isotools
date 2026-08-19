@@ -236,3 +236,71 @@ class MultiPointLinear(CalibrationStrategy):
         ) / self.slope
 
         return summary_df
+
+
+class SinglePointOffset(CalibrationStrategy):
+    """
+    Single-Point Offset Normalization (Shift/Offset Correction).
+
+    Formula:
+        offset = raw_anchor_mean - true_anchor_val
+        corrected = raw_value - offset
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.r_anchor = 0.0
+        self.u_r_anchor = 0.0
+        self.t_anchor = 0.0
+        self.u_t_anchor = 0.0
+        self.offset = 0.0
+
+    def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
+        """Fits the single-point offset model."""
+        if len(anchor_stats) != 1:
+            raise ValueError(
+                f"SinglePointOffset requires exactly 1 anchor standard. Found {len(anchor_stats)}."
+            )
+        name = anchor_stats.index[0]
+        std = refs[name]
+
+        self.r_anchor = anchor_stats.loc[name, "mean"]
+        self.u_r_anchor = anchor_stats.loc[name, "sem"]
+        self.t_anchor = std.d_true
+        self.u_t_anchor = std.u_true
+
+        self.offset = self.r_anchor - self.t_anchor
+        self.slope = 1.0
+        self.intercept = self.offset
+        self.r_squared = 1.0
+
+    def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
+        """Vectorized correction subtracting constant offset."""
+        df = df.copy()
+        df[f"corrected_{target_col}"] = df[target_col] - self.offset
+        return df
+
+    def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
+        """Runs Kragten uncertainty propagation for single-point offset."""
+        results = []
+
+        def prediction_model(args):
+            r_s, r_anc, t_anc = args
+            return r_s - (r_anc - t_anc)
+
+        for _, row in summary_df.iterrows():
+            r_samp = row["mean"]
+            u_samp = row["sem"]
+
+            _, unc = propagate_kragten(
+                model_func=prediction_model,
+                params=[r_samp, self.r_anchor, self.t_anchor],
+                uncertainties=[u_samp, self.u_r_anchor, self.u_t_anchor],
+            )
+            results.append(unc)
+
+        summary_df = summary_df.copy()
+        summary_df["combined_uncertainty"] = results
+        summary_df[f"corrected_{target_col}"] = summary_df["mean"] - self.offset
+        return summary_df
+

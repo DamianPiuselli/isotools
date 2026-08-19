@@ -12,7 +12,7 @@ from .models import ReferenceMaterial
 
 # 3. Configurations
 # Pre-defined system setups.
-from .config import SystemConfig, NITROGEN, WATER_H, WATER_O
+from .config import SystemConfig, NITROGEN, WATER_H, WATER_O, CARBON_13C
 
 # 4. Standards
 # The database of known reference materials.
@@ -20,12 +20,16 @@ from .standards import (
     USGS32, USGS34, USGS35,
     MAR_H, BUENOS_AIRES_H, MENDOZA_H, ANTARTIDA_H,
     MAR_O, BUENOS_AIRES_O, MENDOZA_O, ANTARTIDA_O,
+    NIST8541,
     get_standard
 )
 
 # 5. Strategies
 # The calibration logic needed for Batch.process()
-from .strategies import CalibrationStrategy, TwoPointLinear, MultiPointLinear
+from .strategies import CalibrationStrategy, SinglePointOffset, TwoPointLinear, MultiPointLinear
+
+# 6. Reporting
+from .reporting import generate_html_report, generate_dual_isotope_html_report
 
 # Define what gets imported with `from isotools import *`
 __all__ = [
@@ -35,6 +39,7 @@ __all__ = [
     "NITROGEN",
     "WATER_H",
     "WATER_O",
+    "CARBON_13C",
     "USGS32",
     "USGS34",
     "USGS35",
@@ -46,8 +51,13 @@ __all__ = [
     "BUENOS_AIRES_O",
     "MENDOZA_O",
     "ANTARTIDA_O",
+    "NIST8541",
     "get_standard",
     "CalibrationStrategy",
+    "SinglePointOffset",
     "TwoPointLinear",
     "MultiPointLinear",
+    "generate_html_report",
+    "generate_dual_isotope_html_report",
 ]
+

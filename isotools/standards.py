@@ -91,13 +91,24 @@ ANTARTIDA_O = ReferenceMaterial(
     target_column="d18o",
 )
 
+# --- Carbon Standards (13C) ---
+NIST8541 = ReferenceMaterial(
+    name="NIST8541",
+    d_true=-16.05,
+    u_true=0.04,
+    aliases=["NIST-8541", "8541", "USGS24", "USGS-24", "Graphite"],
+    target_column="d13c",
+)
+
 # --- Registry & Lookup ---
 # This list defines what the library "knows" by default.
 DEFAULT_STANDARDS = [
     USGS32, USGS34, USGS35,
     MAR_H, BUENOS_AIRES_H, MENDOZA_H, ANTARTIDA_H,
-    MAR_O, BUENOS_AIRES_O, MENDOZA_O, ANTARTIDA_O
+    MAR_O, BUENOS_AIRES_O, MENDOZA_O, ANTARTIDA_O,
+    NIST8541,
 ]
+
 
 
 def get_standard(

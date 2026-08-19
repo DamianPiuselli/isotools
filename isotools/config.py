@@ -48,6 +48,13 @@ def _filter_water_o_peaks(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _filter_carbon_peaks(df: pd.DataFrame) -> pd.DataFrame:
+    """Carbon (13C) EA-IRMS logic: Keep Peak 3 (Sample Gas)."""
+    if "peak_nr" in df.columns:
+        return df[df["peak_nr"] == 3].copy()
+    return df
+
+
 # --- Configurations ---
 
 NITROGEN_MAPPING = {
@@ -88,6 +95,23 @@ WATER_O_MAPPING = {
     "Area 28": "area_28",
 }
 
+CARBON_13C_MAPPING = {
+    "Row": "row",
+    "Identifier 1": "sample_name",
+    "Identifier 2": "sample_id_2",
+    "Peak Nr": "peak_nr",
+    "Amount": "amount",
+    "Comment": "comment",
+    "d 13C/12C": "d13c",
+    "R 13C/12C": "r13c",
+    "Ampl 44": "amp_44",
+    "Ampl 45": "amp_45",
+    "Ampl 46": "amp_46",
+    "Area 44": "area_44",
+    "Area 45": "area_45",
+    "Area 46": "area_46",
+}
+
 # The public objects
 NITROGEN = SystemConfig(
     name="Nitrogen (N2)",
@@ -117,3 +141,14 @@ WATER_O = SystemConfig(
     amplitude_column="amp_28",
     absolute_range=(-60.0, 20.0),
 )
+
+CARBON_13C = SystemConfig(
+    name="Carbon (13C)",
+    target_column="d13c",
+    column_mapping=CARBON_13C_MAPPING,
+    filter_func=_filter_carbon_peaks,
+    method_precision=0.15,
+    amplitude_column="amp_44",
+    absolute_range=(-100.0, 50.0),
+)
+

@@ -3,6 +3,8 @@ HTML reporting module using Plotly and Jinja2.
 """
 import os
 from datetime import datetime
+import pandas as pd
+from scipy import stats as sp_stats
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -10,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader
 
 # Set default plotly template
 pio.templates.default = "plotly_white"
+
 
 def _create_drift_plot(batch) -> str:
     """Generates an interactive Plotly drift plot."""
@@ -91,18 +94,24 @@ def _create_drift_plot(batch) -> str:
                 font=dict(size=10)
             )
 
+    x_min, x_max = float(valid_data["row"].min()), float(valid_data["row"].max())
+    y_min, y_max = float(valid_data[batch.config.target_column].min()), float(valid_data[batch.config.target_column].max())
+    y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
+
     fig.update_layout(
+        autosize=True,
         title=f"Drift Analysis (Raw {batch.config.name} vs Row)",
         xaxis_title="Injection (Row)",
         yaxis_title=f"Raw {batch.config.target_column}",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=50, t=100, b=50),
+        xaxis=dict(range=[x_min - 1, x_max + 1], autorange=False),
+        yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
+        legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=90),
         hovermode="closest",
         plot_bgcolor="white"
     )
 
-    # CRITICAL: Do NOT use binary encoding for data arrays
-    return pio.to_html(fig, full_html=False, include_plotlyjs=False, post_script=None)
+    return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
 
 def _create_calibration_plot(batch) -> str:
     """Generates an interactive Plotly calibration plot."""
@@ -165,17 +174,27 @@ def _create_calibration_plot(batch) -> str:
         borderwidth=1
     )
 
+    x_min, x_max = float(anchor_data["d_true"].min()), float(anchor_data["d_true"].max())
+    y_min, y_max = float(anchor_data["working_value"].min()), float(anchor_data["working_value"].max())
+    x_pad = (x_max - x_min) * 0.08 if x_max != x_min else 1.0
+    y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
+
     fig.update_layout(
+        autosize=True,
         title=f"Calibration Curve: {batch.config.name}",
         xaxis_title="Reference Value (True)",
         yaxis_title=f"Measured {batch.config.target_column} (Drift-Corrected)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=50, t=100, b=50),
+        xaxis=dict(range=[x_min - x_pad, x_max + x_pad], autorange=False),
+        yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
+        legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=90),
         hovermode="closest",
         plot_bgcolor="white"
     )
 
-    return pio.to_html(fig, full_html=False, include_plotlyjs=False, post_script=None)
+    return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
+
+
 
 def generate_html_report(batch, filepath: str):
     """
@@ -190,32 +209,248 @@ def generate_html_report(batch, filepath: str):
 
     # Results table - Only if processed
     if batch.summary is not None:
-        results_df = batch.report.copy()
-        results_table_html = results_df.to_html(classes='table', border=0)
+        results_df = batch.report.copy().reset_index()
+        results_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
+        results_table_html = results_df.to_html(classes='table', border=0, index=False)
 
         # QAQC table
-        qaqc_df = batch.qaqc
-        qaqc_table_html = qaqc_df.to_html(classes='table', border=0) if not qaqc_df.empty else None
+        qaqc_df = batch.qaqc.copy()
+        if not qaqc_df.empty:
+            qaqc_df = qaqc_df.reset_index()
+            qaqc_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
+            qaqc_table_html = qaqc_df.to_html(classes='table', border=0, index=False)
+        else:
+            qaqc_table_html = None
     else:
         results_table_html = "<p><i>Batch not yet processed. Run .process() to see results.</i></p>"
         qaqc_table_html = None
 
-    # Metadata
+
+    # Metadata & Decision Audit Context
     context = {
         "system_name": batch.config.name,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "filepath": batch.filepath,
+        "target_column": batch.config.target_column,
         "strategy_name": batch.strategy.__class__.__name__ if batch.strategy else "Not Processed",
+        "anchors": ", ".join(batch.anchors.keys()) if batch.anchors else "None",
+        "controls": ", ".join(batch.controls.keys()) if batch.controls else "None",
+        "drift_monitors": ", ".join(batch.drift_monitors.keys()) if batch.drift_monitors else "None",
+        "excluded_rows": getattr(batch, "excluded_rows_list", []),
+        "blank_correction_applied": batch.blank_correction_applied,
+        "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
+        "drift_monitor_used": batch.drift_monitor_used if batch.drift_correction_applied else "None",
+        "use_method_precision": getattr(batch, "use_method_precision", False),
+        "method_precision": batch.config.method_precision,
+        "strategy_slope": getattr(batch.strategy, "slope", None),
+        "strategy_intercept": getattr(batch.strategy, "intercept", None),
+        "strategy_r2": getattr(batch.strategy, "r_squared", None),
         "drift_monitors_set": len(batch.drift_monitors) > 0,
         "alerts": alerts,
         "drift_plot_html": _create_drift_plot(batch),
         "cal_plot_html": _create_calibration_plot(batch),
         "results_table_html": results_table_html,
-        "qaqc_table_html": qaqc_table_html
+        "qaqc_table_html": qaqc_table_html,
     }
 
     html_content = template.render(context)
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(html_content)
+
+
+def _create_dual_isotope_plot(batch1, batch2) -> str:
+    """Generates an interactive Plotly dual isotope scatter plot."""
+    if batch1.summary is None or batch2.summary is None:
+        return "<p>Both batches must be processed to generate a dual isotope plot.</p>"
+
+    # Determine x (18O or batch2) and y (2H or batch1)
+    if "18o" in batch2.config.target_column.lower():
+        b_x, b_y = batch2, batch1
+    elif "18o" in batch1.config.target_column.lower():
+        b_x, b_y = batch1, batch2
+    else:
+        b_x, b_y = batch1, batch2
+
+    df_x = b_x.report.copy()
+    df_y = b_y.report.copy()
+
+    col_x = f"corrected_{b_x.config.target_column}"
+    col_y = f"corrected_{b_y.config.target_column}"
+
+    merged = pd.merge(df_x, df_y, left_index=True, right_index=True, suffixes=(f"_{b_x.config.target_column}", f"_{b_y.config.target_column}"))
+
+    if merged.empty:
+        return "<p>No matching samples found between the two isotope batches.</p>"
+
+    x_vals = merged[col_x].tolist()
+    y_vals = merged[col_y].tolist()
+    u_x = merged[f"combined_uncertainty_{b_x.config.target_column}"].tolist()
+    u_y = merged[f"combined_uncertainty_{b_y.config.target_column}"].tolist()
+    names = merged.index.tolist()
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=x_vals,
+        y=y_vals,
+        mode='markers+text',
+        name='Samples',
+        text=names,
+        textposition='top center',
+        marker=dict(size=9, color='#2563eb', line=dict(width=1, color='DarkSlateGrey')),
+        error_x=dict(type='data', array=u_x, visible=True, color='#94a3b8'),
+        error_y=dict(type='data', array=u_y, visible=True, color='#94a3b8'),
+        hovertemplate="<b>%{text}</b><br>" + f"{b_x.config.name}: %{{x:.2f}}<br>{b_y.config.name}: %{{y:.2f}}<extra></extra>"
+    ))
+
+    # Add Global Meteoric Water Line (GMWL: y = 8x + 10) if water isotopes
+    if "18o" in b_x.config.target_column.lower() and "2h" in b_y.config.target_column.lower():
+        min_x = min(x_vals) - 3.0
+        max_x = max(x_vals) + 3.0
+        x_line = [float(min_x), float(max_x)]
+        y_gmwl = [float(8.0 * x + 10.0) for x in x_line]
+
+        fig.add_trace(go.Scatter(
+            x=x_line,
+            y=y_gmwl,
+            mode='lines',
+            name='GMWL (y = 8x + 10)',
+            line=dict(color='black', dash='dash', width=2),
+            hoverinfo='skip'
+        ))
+
+        if len(x_vals) >= 3:
+            try:
+                slope, intercept, r_val, _, _ = sp_stats.linregress(x_vals, y_vals)
+                y_lmwl = [float(slope * x + intercept) for x in x_line]
+                fig.add_trace(go.Scatter(
+                    x=x_line,
+                    y=y_lmwl,
+                    mode='lines',
+                    name=f'LMWL (y = {slope:.2f}x + {intercept:.2f})',
+                    line=dict(color='#10b981', width=2),
+                    hoverinfo='skip'
+                ))
+            except Exception:
+                pass
+
+    x_min, x_max = float(min(x_vals)), float(max(x_vals))
+    y_min, y_max = float(min(y_vals)), float(max(y_vals))
+    x_pad = (x_max - x_min) * 0.08 if x_max != x_min else 1.0
+    y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
+
+    fig.update_layout(
+        autosize=True,
+        title=f"Dual Isotope Plot: {b_y.config.name} vs {b_x.config.name}",
+        xaxis_title=f"Normalized {b_x.config.target_column} (‰)",
+        yaxis_title=f"Normalized {b_y.config.target_column} (‰)",
+        xaxis=dict(range=[x_min - x_pad, x_max + x_pad], autorange=False),
+        yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
+        legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=90),
+        hovermode="closest",
+        plot_bgcolor="white"
+    )
+
+    return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
+
+
+
+
+def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str = "Dual Isotope Analytical Report"):
+    """
+    Renders two processed Batch objects into a unified ISO 17025 Dual Isotope HTML report.
+    """
+    template_dir = os.path.join(os.path.dirname(__file__), "templates")
+    env = Environment(loader=FileSystemLoader(template_dir))
+    template = env.get_template("dual_isotope.html")
+
+    # Combine alerts
+    alerts1 = batch1.alerts.to_dict('records') if not batch1.alerts.empty else []
+    alerts2 = batch2.alerts.to_dict('records') if not batch2.alerts.empty else []
+    for a in alerts1:
+        a['system'] = batch1.config.name
+    for a in alerts2:
+        a['system'] = batch2.config.name
+    combined_alerts = alerts1 + alerts2
+
+    # Combined Results Table
+    if batch1.summary is not None and batch2.summary is not None:
+        r1 = batch1.report.copy()
+        r2 = batch2.report.copy()
+        col1 = f"corrected_{batch1.config.target_column}"
+        col2 = f"corrected_{batch2.config.target_column}"
+
+        merged = pd.merge(r1, r2, left_index=True, right_index=True, suffixes=(f"_{batch1.config.target_column}", f"_{batch2.config.target_column}"))
+
+        # Calculate d-excess if Water 2H & 18O
+        if "2h" in batch1.config.target_column.lower() and "18o" in batch2.config.target_column.lower():
+            merged["d_excess"] = (merged[col1] - 8 * merged[col2]).round(2)
+            merged["u_d_excess"] = np.sqrt(merged[f"combined_uncertainty_{batch1.config.target_column}"]**2 + 64 * merged[f"combined_uncertainty_{batch2.config.target_column}"]**2).round(2)
+        elif "18o" in batch1.config.target_column.lower() and "2h" in batch2.config.target_column.lower():
+            merged["d_excess"] = (merged[col2] - 8 * merged[col1]).round(2)
+            merged["u_d_excess"] = np.sqrt(merged[f"combined_uncertainty_{batch2.config.target_column}"]**2 + 64 * merged[f"combined_uncertainty_{batch1.config.target_column}"]**2).round(2)
+
+        merged_df = merged.reset_index()
+        merged_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
+        results_table_html = merged_df.to_html(classes='table', border=0, index=False)
+    else:
+        results_table_html = "<p><i>Batches not yet processed. Run .process() on both batches to see combined results.</i></p>"
+
+    # QAQC table
+    qaqc1 = batch1.qaqc
+    qaqc2 = batch2.qaqc
+    if not qaqc1.empty or not qaqc2.empty:
+        qaqc1_sub = qaqc1.copy() if not qaqc1.empty else pd.DataFrame()
+        qaqc2_sub = qaqc2.copy() if not qaqc2.empty else pd.DataFrame()
+        qaqc1_sub["System"] = batch1.config.name
+        qaqc2_sub["System"] = batch2.config.name
+        qaqc_combined = pd.concat([qaqc1_sub, qaqc2_sub]).reset_index()
+        qaqc_combined.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
+        qaqc_table_html = qaqc_combined.to_html(classes='table', border=0, index=False)
+    else:
+        qaqc_table_html = None
+
+
+    def get_iso_info(b):
+        return {
+            "system_name": b.config.name,
+            "filepath": b.filepath,
+            "target_column": b.config.target_column,
+            "strategy_name": b.strategy.__class__.__name__ if b.strategy else "Not Processed",
+            "anchors": ", ".join(b.anchors.keys()) if b.anchors else "None",
+            "controls": ", ".join(b.controls.keys()) if b.controls else "None",
+            "drift_monitors": ", ".join(b.drift_monitors.keys()) if b.drift_monitors else "None",
+            "excluded_rows": getattr(b, "excluded_rows_list", []),
+            "blank_correction_applied": b.blank_correction_applied,
+            "blank_info": b.blank_info,
+            "drift_correction_applied": b.drift_correction_applied,
+            "drift_monitor_used": b.drift_monitor_used if b.drift_correction_applied else "None",
+            "use_method_precision": getattr(b, "use_method_precision", False),
+            "method_precision": b.config.method_precision,
+            "strategy_slope": getattr(b.strategy, "slope", None),
+            "strategy_intercept": getattr(b.strategy, "intercept", None),
+            "strategy_r2": getattr(b.strategy, "r_squared", None),
+        }
+
+    context = {
+        "title": title,
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "iso1": get_iso_info(batch1),
+        "iso2": get_iso_info(batch2),
+        "alerts": combined_alerts,
+        "dual_plot_html": _create_dual_isotope_plot(batch1, batch2),
+        "cal_plot_1_html": _create_calibration_plot(batch1),
+        "cal_plot_2_html": _create_calibration_plot(batch2),
+        "results_table_html": results_table_html,
+        "qaqc_table_html": qaqc_table_html,
+    }
+
+    html_content = template.render(context)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+
