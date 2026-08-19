@@ -426,16 +426,31 @@ class Batch:
                     f"Monitor standard '{monitor_name}' not found or has insufficient data for drift analysis."
                 )
 
-        slope = drift_stats.loc[monitor_name, "Slope"]
+        slope = float(drift_stats.loc[monitor_name, "Slope"])
+        ci_95 = float(drift_stats.loc[monitor_name, "CI_95"])
+        p_val = float(drift_stats.loc[monitor_name, "p_value"])
+        r2 = float(drift_stats.loc[monitor_name, "R_squared"])
 
         # Apply correction to working_value, starting from raw target
         self.replicates["working_value"] = self.replicates[self.config.target_column] - (slope * self.replicates["row"])
 
-        # Record correction
+        # Record correction metadata
         self.drift_correction_applied = True
         self.drift_monitor_used = monitor_name
+        self.drift_slope = slope
+        self.drift_ci95 = ci_95
+        self.drift_p_value = p_val
+        self.drift_r2 = r2
+        self.drift_info = {
+            "monitor": monitor_name,
+            "slope": slope,
+            "ci_95": ci_95,
+            "p_value": p_val,
+            "r_squared": r2
+        }
         # Invalidate summary cache
         self.summary = None
+
 
     def _detect_area_column(self, area_column: Optional[str] = None) -> str:
         if area_column and area_column in self.replicates.columns:
@@ -544,6 +559,10 @@ class Batch:
         """
         area_col = self._detect_area_column(area_column)
 
+        ci_95 = None
+        p_val = None
+        r2 = None
+
         if slope is None:
             if not substance_name:
                 raise ValueError("Must provide either a direct 'slope' or a 'substance_name' to infer slope.")
@@ -552,6 +571,17 @@ class Batch:
                 raise ValueError(f"Could not calculate linearity slope for substance '{substance_name}'. Insufficient data.")
             matched_name = stats.index[0]
             slope = float(stats.loc[matched_name, "Slope"])
+            ci_95 = float(stats.loc[matched_name, "CI_95"])
+            p_val = float(stats.loc[matched_name, "p_value"])
+            r2 = float(stats.loc[matched_name, "R_squared"])
+        else:
+            if substance_name:
+                stats = self.check_linearity(substance_name=substance_name, area_column=area_col, use_working=True)
+                if not stats.empty:
+                    matched_name = stats.index[0]
+                    ci_95 = float(stats.loc[matched_name, "CI_95"])
+                    p_val = float(stats.loc[matched_name, "p_value"])
+                    r2 = float(stats.loc[matched_name, "R_squared"])
 
         valid_mask = ~self.replicates["excluded"]
         if area_ref is None:
@@ -563,10 +593,16 @@ class Batch:
         # Record attributes
         self.linearity_correction_applied = True
         self.linearity_slope = slope
+        self.linearity_ci95 = ci_95
+        self.linearity_p_value = p_val
+        self.linearity_r2 = r2
         self.linearity_substance_used = substance_name or "Manual Input"
         self.linearity_area_ref = area_ref
         self.linearity_info = {
             "slope": slope,
+            "ci_95": ci_95,
+            "p_value": p_val,
+            "r_squared": r2,
             "substance": substance_name or "Manual Input",
             "area_ref": area_ref,
             "area_column": area_col
@@ -574,6 +610,7 @@ class Batch:
 
         # Invalidate summary cache
         self.summary = None
+
 
 
     def apply_blank_correction(self, blank_identifier: str = "bco cap", area_column: Optional[str] = None):
@@ -906,10 +943,14 @@ class Batch:
                 "Drift Monitors": ", ".join(self.drift_monitors.keys()),
                 "Drift Correction Applied": self.drift_correction_applied,
                 "Drift Monitor Used": self.drift_monitor_used if self.drift_correction_applied else "None",
+                "Drift Slope": getattr(self, "drift_slope", "None") if self.drift_correction_applied else "None",
+                "Drift Slope 95% CI": getattr(self, "drift_ci95", "None") if self.drift_correction_applied else "None",
                 "Linearity Correction Applied": self.linearity_correction_applied,
                 "Linearity Slope": self.linearity_slope if self.linearity_correction_applied else "None",
+                "Linearity Slope 95% CI": getattr(self, "linearity_ci95", "None") if self.linearity_correction_applied else "None",
                 "Linearity Reference Substance": self.linearity_substance_used if self.linearity_correction_applied else "None",
                 "Linearity Ref Area": self.linearity_area_ref if self.linearity_correction_applied else "None",
+
                 "Blank Correction Applied": self.blank_correction_applied,
                 "Blank Identifier": self.blank_info["identifier"] if self.blank_correction_applied and self.blank_info else "None",
 

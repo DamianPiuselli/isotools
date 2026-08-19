@@ -345,18 +345,22 @@
                     <span class="badge badge-danger">Not Applied</span>
                 {% endif %}
             </p>
+            {% if drift_correction_applied and drift_slope is not none %}
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Drift Slope:</strong> {{ "%.4f"|format(drift_slope) }} ‰/row {% if drift_ci95 is not none %}(95% CI: ± {{ "%.4f"|format(drift_ci95) }}){% endif %}</p>
+            {% endif %}
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> 
                 {% if linearity_correction_applied %}
-                    <span class="badge badge-success">Applied</span>
+                    <span class="badge badge-success">Applied</span> ({{ linearity_substance_used }})
                 {% else %}
                     <span class="badge badge-danger">Not Applied</span>
                 {% endif %}
             </p>
-            {% if linearity_correction_applied %}
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Linearity Slope:</strong> {{ "%.5f"|format(linearity_slope) }} ‰ / unit</p>
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Reference Standard:</strong> {{ linearity_substance_used }}</p>
+            {% if linearity_correction_applied and linearity_slope is not none %}
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Linearity Slope:</strong> {{ "%.5f"|format(linearity_slope) }} ‰/unit {% if linearity_ci95 is not none %}(95% CI: ± {{ "%.5f"|format(linearity_ci95) }}){% endif %}</p>
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Ref Area:</strong> {{ "%.2f"|format(linearity_area_ref) }}</p>
             {% endif %}
         </div>
+
 
 
         <!-- Stage 4: Calibration Strategy -->
