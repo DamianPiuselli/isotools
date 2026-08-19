@@ -63,11 +63,13 @@ class Batch:
 
         # 3. Initial Diagnostics
         self.detect_outliers()
+        self.initial_alerts: pd.DataFrame = self._alerts.copy()
         if not self._alerts.empty:
             warnings.warn(
                 f"Detected {len(self._alerts)} suspicious data points on initial load. "
                 "Check the .alerts property for details."
             )
+
 
     @property
     def data_view(self) -> pd.DataFrame:

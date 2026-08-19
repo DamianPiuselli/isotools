@@ -226,12 +226,16 @@
     </div>
 </div>
 
-{% if alerts %}
 <details class="alert-box" open>
     <summary style="cursor: pointer; user-select: none; font-size: 1.1rem; font-weight: 600; color: #92400e; display: flex; align-items: center; justify-content: space-between;">
         <span>⚠️ Automated Data Diagnostics & Alerts</span>
-        <span class="badge badge-danger">{{ alerts|length }} alert(s)</span>
+        {% if alerts %}
+            <span class="badge badge-danger">{{ alerts|length }} active alert(s)</span>
+        {% else %}
+            <span class="badge badge-success">0 active alerts</span>
+        {% endif %}
     </summary>
+    {% if alerts %}
     <div class="table-container">
         <table class="table">
             <thead>
@@ -254,8 +258,15 @@
             </tbody>
         </table>
     </div>
+    {% else %}
+    <div style="background-color: var(--success-bg); border-left: 5px solid var(--success); padding: 15px 20px; border-radius: 8px; margin-top: 15px;">
+        <p style="margin: 0; color: #065f46; font-size: 0.95rem;">
+            ✅ <strong>Data Quality Criteria Met:</strong> No active diagnostic alerts found across both isotope systems.
+        </p>
+    </div>
+    {% endif %}
 </details>
-{% endif %}
+
 
 <details class="section" open>
     <summary style="cursor: pointer; user-select: none; font-size: 1.3rem; font-weight: 700; color: #1e293b; border-bottom: 2px solid var(--bg); padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
