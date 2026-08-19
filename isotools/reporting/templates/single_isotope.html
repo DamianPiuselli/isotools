@@ -338,6 +338,7 @@
         <!-- Stage 3: Drift & Linearity Correction -->
         <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
             <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">3. Drift & Linearity Correction</h3>
+            
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> 
                 {% if drift_correction_applied %}
                     <span class="badge badge-success">Applied</span> ({{ drift_monitor_used }})
@@ -346,9 +347,16 @@
                 {% endif %}
             </p>
             {% if drift_correction_applied and drift_slope is not none %}
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Drift Slope:</strong> {{ "%.4f"|format(drift_slope) }} ‰/row {% if drift_ci95 is not none %}(95% CI: ± {{ "%.4f"|format(drift_ci95) }}){% endif %}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.4f"|format(drift_slope) }} ‰/row</p>
+            {% if drift_ci95 is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.4f"|format(drift_slope - drift_ci95) }}, {{ "%.4f"|format(drift_slope + drift_ci95) }}]</p>
             {% endif %}
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> 
+            {% if drift_p_value is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(drift_p_value) if drift_p_value >= 0.0001 else "< 0.0001" }}</p>
+            {% endif %}
+            {% endif %}
+
+            <p style="margin: 10px 0 4px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> 
                 {% if linearity_correction_applied %}
                     <span class="badge badge-success">Applied</span> ({{ linearity_substance_used }})
                 {% else %}
@@ -356,10 +364,17 @@
                 {% endif %}
             </p>
             {% if linearity_correction_applied and linearity_slope is not none %}
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Linearity Slope:</strong> {{ "%.5f"|format(linearity_slope) }} ‰/unit {% if linearity_ci95 is not none %}(95% CI: ± {{ "%.5f"|format(linearity_ci95) }}){% endif %}</p>
-            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Ref Area:</strong> {{ "%.2f"|format(linearity_area_ref) }}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.5f"|format(linearity_slope) }} ‰/unit</p>
+            {% if linearity_ci95 is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.5f"|format(linearity_slope - linearity_ci95) }}, {{ "%.5f"|format(linearity_slope + linearity_ci95) }}]</p>
+            {% endif %}
+            {% if linearity_p_value is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(linearity_p_value) if linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
+            {% endif %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area ($A_{\text{ref}}$):</strong> {{ "%.2f"|format(linearity_area_ref) }}</p>
             {% endif %}
         </div>
+
 
 
 

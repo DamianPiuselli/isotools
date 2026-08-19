@@ -346,16 +346,20 @@ def generate_html_report(batch, filepath: str):
         "drift_monitors": ", ".join(batch.drift_monitors.keys()) if batch.drift_monitors else "None",
         "excluded_rows": getattr(batch, "excluded_rows_list", []),
         "blank_correction_applied": batch.blank_correction_applied,
-        "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
         "drift_monitor_used": batch.drift_monitor_used if batch.drift_correction_applied else "None",
         "drift_slope": getattr(batch, "drift_slope", None),
         "drift_ci95": getattr(batch, "drift_ci95", None),
+        "drift_p_value": getattr(batch, "drift_p_value", None),
+        "drift_r2": getattr(batch, "drift_r2", None),
         "linearity_correction_applied": getattr(batch, "linearity_correction_applied", False),
         "linearity_slope": getattr(batch, "linearity_slope", None),
         "linearity_ci95": getattr(batch, "linearity_ci95", None),
+        "linearity_p_value": getattr(batch, "linearity_p_value", None),
+        "linearity_r2": getattr(batch, "linearity_r2", None),
         "linearity_substance_used": getattr(batch, "linearity_substance_used", "None"),
         "linearity_area_ref": getattr(batch, "linearity_area_ref", None),
+
 
         "use_method_precision": getattr(batch, "use_method_precision", False),
         "method_precision": batch.config.method_precision,
@@ -547,11 +551,16 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
             "drift_monitor_used": b.drift_monitor_used if b.drift_correction_applied else "None",
             "drift_slope": getattr(b, "drift_slope", None),
             "drift_ci95": getattr(b, "drift_ci95", None),
+            "drift_p_value": getattr(b, "drift_p_value", None),
+            "drift_r2": getattr(b, "drift_r2", None),
             "linearity_correction_applied": getattr(b, "linearity_correction_applied", False),
             "linearity_slope": getattr(b, "linearity_slope", None),
             "linearity_ci95": getattr(b, "linearity_ci95", None),
+            "linearity_p_value": getattr(b, "linearity_p_value", None),
+            "linearity_r2": getattr(b, "linearity_r2", None),
             "linearity_substance_used": getattr(b, "linearity_substance_used", "None"),
             "linearity_area_ref": getattr(b, "linearity_area_ref", None),
+
 
             "use_method_precision": getattr(b, "use_method_precision", False),
 
