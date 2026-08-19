@@ -283,6 +283,7 @@
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Excluded Rows:</strong> {{ iso1.excluded_rows if iso1.excluded_rows else "None" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Blank Correction:</strong> {{ "Applied (" + iso1.blank_info.identifier + ")" if iso1.blank_correction_applied else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> {{ "Applied (" + iso1.drift_monitor_used + ")" if iso1.drift_correction_applied else "Not Applied" }}</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (Slope = %.5f)"|format(iso1.linearity_slope) if iso1.linearity_correction_applied else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Strategy:</strong> {{ iso1.strategy_name }} (Anchors: {{ iso1.anchors }})</p>
             {% if iso1.strategy_slope is not none %}
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Fit Equation:</strong> Measured = {{ "%.4f"|format(iso1.strategy_slope) }} × True + {{ "%.4f"|format(iso1.strategy_intercept) }} (R² = {{ "%.4f"|format(iso1.strategy_r2) }})</p>
@@ -298,6 +299,8 @@
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Excluded Rows:</strong> {{ iso2.excluded_rows if iso2.excluded_rows else "None" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Blank Correction:</strong> {{ "Applied (" + iso2.blank_info.identifier + ")" if iso2.blank_correction_applied else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> {{ "Applied (" + iso2.drift_monitor_used + ")" if iso2.drift_correction_applied else "Not Applied" }}</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (Slope = %.5f)"|format(iso2.linearity_slope) if iso2.linearity_correction_applied else "Not Applied" }}</p>
+
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Strategy:</strong> {{ iso2.strategy_name }} (Anchors: {{ iso2.anchors }})</p>
             {% if iso2.strategy_slope is not none %}
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Fit Equation:</strong> Measured = {{ "%.4f"|format(iso2.strategy_slope) }} × True + {{ "%.4f"|format(iso2.strategy_intercept) }} (R² = {{ "%.4f"|format(iso2.strategy_r2) }})</p>

@@ -194,6 +194,97 @@ def _create_calibration_plot(batch) -> str:
 
     return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
 
+def _create_linearity_plot(batch) -> str:
+    """Generates an interactive Plotly linearity plot (Delta vs Signal Area/Amplitude)."""
+    if not getattr(batch, "linearity_correction_applied", False) and not hasattr(batch, "linearity_info"):
+        return "<p>No linearity correction applied.</p>"
+
+    try:
+        area_col = batch._detect_area_column()
+    except Exception:
+        return "<p>Area column not available for linearity plot.</p>"
+
+    valid_data = batch.replicates[~batch.replicates["excluded"]].copy()
+    if valid_data.empty:
+        return "<p>No valid data for linearity plot.</p>"
+
+    fig = go.Figure()
+
+    substance = getattr(batch, "linearity_substance_used", None)
+    if substance and substance in valid_data["sample_name"].values:
+        sub_data = valid_data[valid_data["sample_name"] == substance]
+    else:
+        sub_data = valid_data
+
+    for name, group in sub_data.groupby("sample_name"):
+        fig.add_trace(go.Scatter(
+            x=group[area_col].tolist(),
+            y=group[batch.config.target_column].tolist(),
+            mode='markers',
+            name=name,
+            marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')),
+            text=group["row"].tolist(),
+            hovertemplate="<b>Row %{text}</b><br>Area: %{x}<br>Raw Delta: %{y:.3f}<extra></extra>"
+        ))
+
+    x_vals = pd.to_numeric(sub_data[area_col], errors='coerce').dropna().tolist()
+    y_vals = pd.to_numeric(sub_data[batch.config.target_column], errors='coerce').dropna().tolist()
+
+    slope = getattr(batch, "linearity_slope", None)
+    if slope is not None and len(x_vals) >= 2:
+        x_min, x_max = float(min(x_vals)), float(max(x_vals))
+        y_mean = float(np.mean(y_vals))
+        x_mean = float(np.mean(x_vals))
+        intercept = y_mean - slope * x_mean
+
+        x_line = [x_min, x_max]
+        y_line = [slope * x_min + intercept, slope * x_max + intercept]
+
+        fig.add_trace(go.Scatter(
+            x=x_line,
+            y=y_line,
+            mode='lines',
+            name=f'Linearity Slope ({slope:.5f})',
+            line=dict(color='#d97706', dash='dash', width=2),
+            hoverinfo='skip'
+        ))
+
+        eq_text = f"Slope = {slope:.5f} ‰ / unit<br>Ref Area = {getattr(batch, 'linearity_area_ref', 'N/A')}"
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=0.02, y=0.95,
+            text=eq_text,
+            showarrow=False,
+            align="left",
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="black",
+            borderwidth=1,
+            font=dict(size=10)
+        )
+
+    if x_vals and y_vals:
+        x_min, x_max = float(min(x_vals)), float(max(x_vals))
+        y_min, y_max = float(min(y_vals)), float(max(y_vals))
+        x_pad = (x_max - x_min) * 0.08 if x_max != x_min else 1.0
+        y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
+        fig.update_layout(
+            xaxis=dict(range=[x_min - x_pad, x_max + x_pad], autorange=False),
+            yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
+        )
+
+
+    fig.update_layout(
+        autosize=True,
+        title=f"Linearity Dependence ({batch.config.name} vs {area_col})",
+        xaxis_title=f"Signal Intensity / Peak Area ({area_col})",
+        yaxis_title=f"Raw {batch.config.target_column} (‰)",
+        legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+        margin=dict(l=60, r=40, t=60, b=90),
+        hovermode="closest",
+        plot_bgcolor="white"
+    )
+
+    return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
 
 
 def generate_html_report(batch, filepath: str):
@@ -241,6 +332,10 @@ def generate_html_report(batch, filepath: str):
         "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
         "drift_monitor_used": batch.drift_monitor_used if batch.drift_correction_applied else "None",
+        "linearity_correction_applied": getattr(batch, "linearity_correction_applied", False),
+        "linearity_slope": getattr(batch, "linearity_slope", None),
+        "linearity_substance_used": getattr(batch, "linearity_substance_used", "None"),
+        "linearity_area_ref": getattr(batch, "linearity_area_ref", None),
         "use_method_precision": getattr(batch, "use_method_precision", False),
         "method_precision": batch.config.method_precision,
         "strategy_slope": getattr(batch.strategy, "slope", None),
@@ -249,6 +344,7 @@ def generate_html_report(batch, filepath: str):
         "drift_monitors_set": len(batch.drift_monitors) > 0,
         "alerts": alerts,
         "drift_plot_html": _create_drift_plot(batch),
+        "linearity_plot_html": _create_linearity_plot(batch),
         "cal_plot_html": _create_calibration_plot(batch),
         "results_table_html": results_table_html,
         "qaqc_table_html": qaqc_table_html,
@@ -428,7 +524,12 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
             "blank_info": b.blank_info,
             "drift_correction_applied": b.drift_correction_applied,
             "drift_monitor_used": b.drift_monitor_used if b.drift_correction_applied else "None",
+            "linearity_correction_applied": getattr(b, "linearity_correction_applied", False),
+            "linearity_slope": getattr(b, "linearity_slope", None),
+            "linearity_substance_used": getattr(b, "linearity_substance_used", "None"),
+            "linearity_area_ref": getattr(b, "linearity_area_ref", None),
             "use_method_precision": getattr(b, "use_method_precision", False),
+
             "method_precision": b.config.method_precision,
             "strategy_slope": getattr(b.strategy, "slope", None),
             "strategy_intercept": getattr(b.strategy, "intercept", None),

@@ -54,11 +54,17 @@ class Batch:
         self.drift_monitor_used: Optional[str] = None
         self.blank_correction_applied = False
         self.blank_info: Optional[Dict] = None
+        self.linearity_correction_applied: bool = False
+        self.linearity_slope: Optional[float] = None
+        self.linearity_substance_used: Optional[str] = None
+        self.linearity_area_ref: Optional[float] = None
+        self.linearity_info: Optional[Dict] = None
         self.excluded_rows_list: List[int] = []
         self.use_method_precision: bool = False
         self.summary: Optional[pd.DataFrame] = None
         self.strategy: Optional[CalibrationStrategy] = None
         self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
+
 
 
         # 3. Initial Diagnostics
@@ -431,6 +437,145 @@ class Batch:
         # Invalidate summary cache
         self.summary = None
 
+    def _detect_area_column(self, area_column: Optional[str] = None) -> str:
+        if area_column and area_column in self.replicates.columns:
+            return area_column
+
+        numeric_cols = self.replicates.select_dtypes(include=[np.number]).columns
+        candidates = [
+            col for col in numeric_cols
+            if any(k in col.lower() for k in ["area", "ampl", "intensity", "signal"])
+        ]
+        if candidates:
+            area_candidates = [c for c in candidates if "area" in c.lower()]
+            if area_candidates:
+                return area_candidates[0]
+            return candidates[0]
+
+        raise ValueError("Could not auto-detect numeric peak area/amplitude column. Please specify 'area_column'.")
+
+
+    def check_linearity(
+        self,
+        substance_name: Optional[str] = None,
+        area_column: Optional[str] = None,
+        use_working: bool = True
+    ) -> pd.DataFrame:
+        """
+        Quantifies signal intensity / peak area dependence (linearity) using OLS regression.
+
+        Calculates:
+        - Slope (delta per area/amplitude unit)
+        - CI_95 (95% Confidence Interval for slope)
+        - p_value and R_squared
+
+        Args:
+            substance_name: Optional standard/sample name to evaluate. If None, evaluates all groups.
+            area_column: Specific peak area or amplitude column name. Auto-detected if None.
+            use_working: Whether to regress working_value (True) or raw target delta (False).
+        """
+        col_to_use = "working_value" if use_working else self.config.target_column
+        area_col = self._detect_area_column(area_column)
+
+        valid_data = self.replicates[~self.replicates["excluded"]].copy()
+
+        if substance_name:
+            sub_canonical = self.get_canonical_name(substance_name, self.anchors) or substance_name
+            mask = valid_data["sample_name"].str.strip().str.lower() == sub_canonical.strip().lower()
+            if not mask.any():
+                mask = valid_data["sample_name"].str.contains(substance_name, case=False, na=False)
+            filtered = valid_data[mask]
+        else:
+            filtered = valid_data
+
+        if filtered.empty:
+            return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"])
+
+        results = []
+        for name, group in filtered.groupby("sample_name"):
+            group_clean = group.dropna(subset=[area_col, col_to_use])
+            if len(group_clean) < 3:
+                continue
+
+            x = group_clean[area_col]
+            y = group_clean[col_to_use]
+
+            if x.max() == x.min():
+                continue
+
+            slope, _, r_value, p_value, std_err = sp_stats.linregress(x, y)
+            df_deg = len(x) - 2
+            t_crit = sp_stats.t.ppf(0.975, df_deg)
+            ci_95 = t_crit * std_err if not np.isnan(std_err) else 0.0
+
+            results.append({
+                "Substance": name,
+                "Slope": slope,
+                "CI_95": ci_95,
+                "p_value": p_value,
+                "R_squared": r_value**2,
+                "n": len(x),
+                "Mean_Area": x.mean()
+            })
+
+        if not results:
+            return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"])
+
+        return pd.DataFrame(results).set_index("Substance")
+
+    def apply_linearity_correction(
+        self,
+        slope: Optional[float] = None,
+        substance_name: Optional[str] = None,
+        area_ref: Optional[float] = None,
+        area_column: Optional[str] = None
+    ):
+        """
+        Applies mass/intensity linearity correction to working_value.
+
+        Formula:
+            working_value = working_value - slope * (area - area_ref)
+
+        Args:
+            slope: Direct slope (delta unit per area unit). If None, inferred from substance_name.
+            substance_name: Standard/sample name used to infer slope if slope is None.
+            area_ref: Reference area value. If None, defaults to median area of valid replicates.
+            area_column: Specific column name for signal area/amplitude. Auto-detected if None.
+        """
+        area_col = self._detect_area_column(area_column)
+
+        if slope is None:
+            if not substance_name:
+                raise ValueError("Must provide either a direct 'slope' or a 'substance_name' to infer slope.")
+            stats = self.check_linearity(substance_name=substance_name, area_column=area_col, use_working=True)
+            if stats.empty:
+                raise ValueError(f"Could not calculate linearity slope for substance '{substance_name}'. Insufficient data.")
+            matched_name = stats.index[0]
+            slope = float(stats.loc[matched_name, "Slope"])
+
+        valid_mask = ~self.replicates["excluded"]
+        if area_ref is None:
+            area_ref = float(self.replicates.loc[valid_mask, area_col].median())
+
+        # Apply correction to working_value
+        self.replicates["working_value"] = self.replicates["working_value"] - slope * (self.replicates[area_col] - area_ref)
+
+        # Record attributes
+        self.linearity_correction_applied = True
+        self.linearity_slope = slope
+        self.linearity_substance_used = substance_name or "Manual Input"
+        self.linearity_area_ref = area_ref
+        self.linearity_info = {
+            "slope": slope,
+            "substance": substance_name or "Manual Input",
+            "area_ref": area_ref,
+            "area_column": area_col
+        }
+
+        # Invalidate summary cache
+        self.summary = None
+
+
     def apply_blank_correction(self, blank_identifier: str = "bco cap", area_column: Optional[str] = None):
         """
         Applies mass-balance blank correction to working values.
@@ -761,8 +906,13 @@ class Batch:
                 "Drift Monitors": ", ".join(self.drift_monitors.keys()),
                 "Drift Correction Applied": self.drift_correction_applied,
                 "Drift Monitor Used": self.drift_monitor_used if self.drift_correction_applied else "None",
+                "Linearity Correction Applied": self.linearity_correction_applied,
+                "Linearity Slope": self.linearity_slope if self.linearity_correction_applied else "None",
+                "Linearity Reference Substance": self.linearity_substance_used if self.linearity_correction_applied else "None",
+                "Linearity Ref Area": self.linearity_area_ref if self.linearity_correction_applied else "None",
                 "Blank Correction Applied": self.blank_correction_applied,
                 "Blank Identifier": self.blank_info["identifier"] if self.blank_correction_applied and self.blank_info else "None",
+
             }
 
             if self.strategy:
