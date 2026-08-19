@@ -216,21 +216,35 @@ def _create_linearity_plot(batch) -> str:
     else:
         sub_data = valid_data
 
+    # Determine which Y series to plot (the series that was actually regressed)
+    if "pre_linearity_working_value" in sub_data.columns:
+        y_col = "pre_linearity_working_value"
+        y_label = "Blank-Corrected δ (‰)" if batch.blank_correction_applied else "Working δ (‰)"
+    elif "working_value" in sub_data.columns:
+        y_col = "working_value"
+        y_label = "Working δ (‰)"
+    else:
+        y_col = batch.config.target_column
+        y_label = f"Raw {batch.config.target_column} (‰)"
+
     for name, group in sub_data.groupby("sample_name"):
         fig.add_trace(go.Scatter(
             x=group[area_col].tolist(),
-            y=group[batch.config.target_column].tolist(),
+            y=group[y_col].tolist(),
             mode='markers',
             name=name,
             marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')),
             text=group["row"].tolist(),
-            hovertemplate="<b>Row %{text}</b><br>Area: %{x}<br>Raw Delta: %{y:.3f}<extra></extra>"
+            hovertemplate="<b>Row %{text}</b><br>Area: %{x}<br>Delta: %{y:.3f} ‰<extra></extra>"
         ))
 
     x_vals = pd.to_numeric(sub_data[area_col], errors='coerce').dropna().tolist()
-    y_vals = pd.to_numeric(sub_data[batch.config.target_column], errors='coerce').dropna().tolist()
+    y_vals = pd.to_numeric(sub_data[y_col], errors='coerce').dropna().tolist()
 
     slope = getattr(batch, "linearity_slope", None)
+    ci_95 = getattr(batch, "linearity_ci95", None)
+    r2 = getattr(batch, "linearity_r2", None)
+
     if slope is not None and len(x_vals) >= 2:
         x_min, x_max = float(min(x_vals)), float(max(x_vals))
         y_mean = float(np.mean(y_vals))
@@ -249,7 +263,10 @@ def _create_linearity_plot(batch) -> str:
             hoverinfo='skip'
         ))
 
-        eq_text = f"Slope = {slope:.5f} ‰ / unit<br>Ref Area = {getattr(batch, 'linearity_area_ref', 'N/A')}"
+        ci_str = f"± {ci_95:.5f}" if ci_95 is not None else "N/A"
+        r2_str = f"{r2:.4f}" if r2 is not None else "N/A"
+
+        eq_text = f"Slope = {slope:.5f} ‰/unit<br>95% CI = {ci_str}<br>R² = {r2_str}<br>Ref Area = {getattr(batch, 'linearity_area_ref', 'N/A')}"
         fig.add_annotation(
             xref="paper", yref="paper",
             x=0.02, y=0.95,
@@ -272,17 +289,17 @@ def _create_linearity_plot(batch) -> str:
             yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
         )
 
-
     fig.update_layout(
         autosize=True,
         title=f"Linearity Dependence ({batch.config.name} vs {area_col})",
         xaxis_title=f"Signal Intensity / Peak Area ({area_col})",
-        yaxis_title=f"Raw {batch.config.target_column} (‰)",
+        yaxis_title=y_label,
         legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
         margin=dict(l=60, r=40, t=60, b=90),
         hovermode="closest",
         plot_bgcolor="white"
     )
+
 
     return pio.to_html(fig, config={'responsive': True}, full_html=False, include_plotlyjs=False, post_script=None)
 

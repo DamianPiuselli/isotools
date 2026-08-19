@@ -587,8 +587,12 @@ class Batch:
         if area_ref is None:
             area_ref = float(self.replicates.loc[valid_mask, area_col].median())
 
+        # Store pre-linearity working value for auditing and accurate plot alignment
+        self.replicates["pre_linearity_working_value"] = self.replicates["working_value"].copy()
+
         # Apply correction to working_value
         self.replicates["working_value"] = self.replicates["working_value"] - slope * (self.replicates[area_col] - area_ref)
+
 
         # Record attributes
         self.linearity_correction_applied = True
