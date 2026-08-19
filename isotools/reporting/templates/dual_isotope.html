@@ -302,7 +302,8 @@
             {% if iso1.linearity_p_value is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso1.linearity_p_value) if iso1.linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area:</strong> {{ "%.2f"|format(iso1.linearity_area_ref) }}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(iso1.linearity_area_ref) }}</p>
+
             {% endif %}
 
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Strategy:</strong> {{ iso1.strategy_name }} (Anchors: {{ iso1.anchors }})</p>
@@ -339,7 +340,8 @@
             {% if iso2.linearity_p_value is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso2.linearity_p_value) if iso2.linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area:</strong> {{ "%.2f"|format(iso2.linearity_area_ref) }}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(iso2.linearity_area_ref) }}</p>
+
             {% endif %}
 
 

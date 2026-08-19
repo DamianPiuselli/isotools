@@ -371,7 +371,8 @@
             {% if linearity_p_value is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(linearity_p_value) if linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area ($A_{\text{ref}}$):</strong> {{ "%.2f"|format(linearity_area_ref) }}</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(linearity_area_ref) }}</p>
+
             {% endif %}
         </div>
 
