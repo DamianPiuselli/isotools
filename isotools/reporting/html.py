@@ -400,7 +400,9 @@ def generate_html_report(batch, filepath: str):
         "drift_monitors": ", ".join(batch.drift_monitors.keys()) if batch.drift_monitors else "None",
         "excluded_rows": getattr(batch, "excluded_rows_list", []),
         "blank_correction_applied": batch.blank_correction_applied,
+        "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
+
         "drift_monitor_used": batch.drift_monitor_used if batch.drift_correction_applied else "None",
         "drift_slope": getattr(batch, "drift_slope", None),
         "drift_ci95": getattr(batch, "drift_ci95", None),
