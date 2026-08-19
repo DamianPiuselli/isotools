@@ -100,14 +100,23 @@ NIST8541 = ReferenceMaterial(
     target_column="d13c",
 )
 
+SRM1649a = ReferenceMaterial(
+    name="1649a",
+    d_true=-25.60,
+    u_true=0.20,
+    aliases=["NIST1649a", "NIST-1649a", "SRM 1649a", "SRM-1649a", "1649A", "Urban Dust"],
+    target_column="d13c",
+)
+
 # --- Registry & Lookup ---
 # This list defines what the library "knows" by default.
 DEFAULT_STANDARDS = [
     USGS32, USGS34, USGS35,
     MAR_H, BUENOS_AIRES_H, MENDOZA_H, ANTARTIDA_H,
     MAR_O, BUENOS_AIRES_O, MENDOZA_O, ANTARTIDA_O,
-    NIST8541,
+    NIST8541, SRM1649a,
 ]
+
 
 
 
