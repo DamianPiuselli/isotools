@@ -268,19 +268,58 @@
 
 <div class="header">
     {% block header %}
-    <h1>{% block header_title %}Isotools Analytical Report{% endblock %}</h1>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h1 style="margin: 0;">{% block header_title %}Isotools Analytical Report{% endblock %}</h1>
+            <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.9rem;">
+                ISO 17025 Compliant Isotope Processing & Uncertainty Audit
+            </p>
+        </div>
+        <div style="text-align: right;">
+            <span class="badge" style="background: rgba(255,255,255,0.12); color: #f1f5f9; font-size: 0.8rem; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.2);">
+                Pipeline v1.0
+            </span>
+        </div>
+    </div>
+
     <div class="metadata">
         {% block metadata %}
         <div class="metadata-item"><strong>Isotope System:</strong> {{ system_name if system_name else title }}</div>
-        <div class="metadata-item"><strong>Analysis Date:</strong> {{ date }}</div>
-        <div class="metadata-item"><strong>Source File:</strong> {{ filepath if filepath else "Integrated Run" }}</div>
+        <div class="metadata-item"><strong>Source File:</strong> {{ filename if filename else (filepath if filepath else "Integrated Run") }}</div>
+        <div class="metadata-item"><strong>Measurement Date:</strong> {{ acquisition_date if acquisition_date else "N/A" }}</div>
+        <div class="metadata-item"><strong>Processing Date:</strong> {{ processing_date if processing_date else date }}</div>
+        {% if target_column %}
+        <div class="metadata-item"><strong>Target Variable:</strong> {{ target_column }}</div>
+        {% endif %}
         {% if strategy_name %}
         <div class="metadata-item"><strong>Calibration Strategy:</strong> {{ strategy_name }}</div>
         {% endif %}
+        
+        <div class="metadata-item" style="grid-column: 1 / -1; border-top: 1px solid #334155; padding-top: 12px; margin-top: 5px; font-size: 0.88rem; color: #cbd5e1; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <strong>Pipeline Setup:</strong>
+            {% if blank_correction_applied %}
+                <span class="badge badge-success">Blank: {{ blank_info.identifier if blank_info else "Applied" }}</span>
+            {% else %}
+                <span class="badge badge-danger">Blank: Off</span>
+            {% endif %}
+            
+            {% if drift_correction_applied %}
+                <span class="badge badge-success">Drift: {{ drift_monitor_used }}</span>
+            {% else %}
+                <span class="badge badge-danger">Drift: Off</span>
+            {% endif %}
+
+            {% if linearity_correction_applied %}
+                <span class="badge badge-success">Linearity: {{ linearity_substance_used }}</span>
+            {% else %}
+                <span class="badge badge-danger">Linearity: Off</span>
+            {% endif %}
+        </div>
         {% endblock %}
     </div>
     {% endblock %}
 </div>
+
 
 <details class="alert-box">
     <summary style="cursor: pointer; user-select: none; font-size: 1.1rem; font-weight: 600; color: #92400e; display: flex; align-items: center; justify-content: space-between;">

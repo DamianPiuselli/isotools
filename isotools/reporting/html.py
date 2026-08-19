@@ -391,10 +391,14 @@ def generate_html_report(batch, filepath: str):
     # Metadata & Decision Audit Context
     context = {
         "system_name": batch.config.name,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "filename": batch.filename,
         "filepath": batch.filepath,
+        "acquisition_date": batch.acquisition_date,
+        "processing_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "target_column": batch.config.target_column,
         "strategy_name": batch.strategy.__class__.__name__ if batch.strategy else "Not Processed",
+
         "anchors": ", ".join(batch.anchors.keys()) if batch.anchors else "None",
         "controls": ", ".join(batch.controls.keys()) if batch.controls else "None",
         "drift_monitors": ", ".join(batch.drift_monitors.keys()) if batch.drift_monitors else "None",
@@ -597,7 +601,9 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
     def get_iso_info(b):
         return {
             "system_name": b.config.name,
+            "filename": b.filename,
             "filepath": b.filepath,
+            "acquisition_date": b.acquisition_date,
             "target_column": b.config.target_column,
             "strategy_name": b.strategy.__class__.__name__ if b.strategy else "Not Processed",
             "anchors": ", ".join(b.anchors.keys()) if b.anchors else "None",
@@ -621,11 +627,7 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
             "linearity_area_ref": getattr(b, "linearity_area_ref", None),
             "linearity_is_direct": getattr(b, "linearity_is_direct", False),
             "linearity_source": getattr(b, "linearity_source", "Inferred from Run Replicates"),
-
-
-
             "use_method_precision": getattr(b, "use_method_precision", False),
-
             "method_precision": b.config.method_precision,
             "strategy_slope": getattr(b.strategy, "slope", None),
             "strategy_intercept": getattr(b.strategy, "intercept", None),
@@ -634,10 +636,14 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
 
     context = {
         "title": title,
+        "filename": f"{batch1.filename} / {batch2.filename}",
+        "acquisition_date": batch1.acquisition_date,
+        "processing_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "iso1": get_iso_info(batch1),
         "iso2": get_iso_info(batch2),
         "alerts": combined_alerts,
+
         "dual_plot_html": _create_dual_isotope_plot(batch1, batch2),
         "cal_plot_1_html": _create_calibration_plot(batch1),
         "cal_plot_2_html": _create_calibration_plot(batch2),

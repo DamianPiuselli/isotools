@@ -5,11 +5,56 @@
 {% block header_title %}{{ title }}{% endblock %}
 
 {% block metadata %}
-<div class="metadata-item"><strong>Primary System:</strong> {{ iso1.system_name }}</div>
-<div class="metadata-item"><strong>Secondary System:</strong> {{ iso2.system_name }}</div>
-<div class="metadata-item"><strong>Analysis Date:</strong> {{ date }}</div>
-<div class="metadata-item"><strong>Source Files:</strong> {{ iso1.filepath }} / {{ iso2.filepath }}</div>
+<div class="metadata-item"><strong>Primary System:</strong> {{ iso1.system_name }} ({{ iso1.target_column }})</div>
+<div class="metadata-item"><strong>Secondary System:</strong> {{ iso2.system_name }} ({{ iso2.target_column }})</div>
+<div class="metadata-item"><strong>Source Files:</strong> {{ iso1.filename }} / {{ iso2.filename }}</div>
+<div class="metadata-item"><strong>Measurement Date:</strong> {{ iso1.acquisition_date }}</div>
+<div class="metadata-item"><strong>Processing Date:</strong> {{ processing_date }}</div>
+<div class="metadata-item"><strong>Calibration Strategy:</strong> {{ iso1.strategy_name }} / {{ iso2.strategy_name }}</div>
+
+<div class="metadata-item" style="grid-column: 1 / -1; border-top: 1px solid #334155; padding-top: 12px; margin-top: 5px; font-size: 0.88rem; color: #cbd5e1; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+    <strong>System 1 Pipeline:</strong>
+    {% if iso1.blank_correction_applied %}
+        <span class="badge badge-success">Blank: {{ iso1.blank_info.identifier if iso1.blank_info else "Applied" }}</span>
+    {% else %}
+        <span class="badge badge-danger">Blank: Off</span>
+    {% endif %}
+    
+    {% if iso1.drift_correction_applied %}
+        <span class="badge badge-success">Drift: {{ iso1.drift_monitor_used }}</span>
+    {% else %}
+        <span class="badge badge-danger">Drift: Off</span>
+    {% endif %}
+
+    {% if iso1.linearity_correction_applied %}
+        <span class="badge badge-success">Linearity: {{ iso1.linearity_substance_used }}</span>
+    {% else %}
+        <span class="badge badge-danger">Linearity: Off</span>
+    {% endif %}
+
+    <span style="margin: 0 10px; color: #475569;">|</span>
+
+    <strong>System 2 Pipeline:</strong>
+    {% if iso2.blank_correction_applied %}
+        <span class="badge badge-success">Blank: {{ iso2.blank_info.identifier if iso2.blank_info else "Applied" }}</span>
+    {% else %}
+        <span class="badge badge-danger">Blank: Off</span>
+    {% endif %}
+    
+    {% if iso2.drift_correction_applied %}
+        <span class="badge badge-success">Drift: {{ iso2.drift_monitor_used }}</span>
+    {% else %}
+        <span class="badge badge-danger">Drift: Off</span>
+    {% endif %}
+
+    {% if iso2.linearity_correction_applied %}
+        <span class="badge badge-success">Linearity: {{ iso2.linearity_substance_used }}</span>
+    {% else %}
+        <span class="badge badge-danger">Linearity: Off</span>
+    {% endif %}
+</div>
 {% endblock %}
+
 
 {% block content %}
 <details class="section" open>

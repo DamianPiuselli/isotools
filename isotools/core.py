@@ -1,8 +1,13 @@
 """
 Core processing logic for IRMS data batches.
 """
+import os
+import re
+import datetime
+from datetime import datetime as dt
 import warnings
 from typing import List, Dict, Optional
+
 
 import numpy as np
 import pandas as pd
@@ -64,6 +69,7 @@ class Batch:
         self.summary: Optional[pd.DataFrame] = None
         self.strategy: Optional[CalibrationStrategy] = None
         self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
+        self._acquisition_date: Optional[str] = None
 
 
 
@@ -78,7 +84,59 @@ class Batch:
 
 
     @property
+    def filename(self) -> str:
+        """Returns the basename of the source data file."""
+        return os.path.basename(self.filepath) if self.filepath else "Unknown File"
+
+    @property
+    def acquisition_date(self) -> str:
+        """
+        Returns the measurement/acquisition date (YYYY-MM-DD).
+        Can be set manually or inferred from filename/file mtime.
+        """
+        if self._acquisition_date:
+            return self._acquisition_date
+
+        if self.filepath:
+            fname = os.path.basename(self.filepath)
+            # Try matching date patterns (DDMMYY, DDMMYYYY, YYYY-MM-DD, YYYYMMDD)
+            m_dmy = re.search(r'(\d{2})(\d{2})(\d{2,4})', fname)
+            if m_dmy:
+                d, m, y = m_dmy.groups()
+                if len(y) == 2:
+                    y = "20" + y
+                try:
+                    d_obj = datetime.date(int(y), int(m), int(d))
+                    return d_obj.strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+
+            m_ymd = re.search(r'(\d{4})[-_]?(\d{2})[-_]?(\d{2})', fname)
+            if m_ymd:
+                y, m, d = m_ymd.groups()
+                try:
+                    d_obj = datetime.date(int(y), int(m), int(d))
+                    return d_obj.strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+
+            try:
+                mtime = os.path.getmtime(self.filepath)
+                return datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        return dt.now().strftime("%Y-%m-%d")
+
+
+
+    @acquisition_date.setter
+    def acquisition_date(self, value: str):
+        self._acquisition_date = value
+
+    @property
     def data_view(self) -> pd.DataFrame:
+
         """Returns the full raw data for preliminary analysis and inspection."""
         return self.replicates
 
