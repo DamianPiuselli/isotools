@@ -508,7 +508,7 @@ def generate_html_report(batch, filepath: str):
         "anchors": ", ".join(batch.anchors.keys()) if batch.anchors else "None",
         "controls": ", ".join(batch.controls.keys()) if batch.controls else "None",
         "drift_monitors": ", ".join(batch.drift_monitors.keys()) if batch.drift_monitors else "None",
-        "excluded_rows": getattr(batch, "excluded_rows_list", []),
+        "excluded_rows": ", ".join(map(str, batch.excluded_rows_list)) if batch.excluded_rows_list else "None",
         "blank_correction_applied": batch.blank_correction_applied,
         "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
@@ -689,20 +689,31 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
     else:
         results_table_html = "<p><i>Batches not yet processed. Run .process() on both batches to see combined results.</i></p>"
 
-    # QAQC table
+    # QAQC tables (Separate subtables per system for clean presentation without NaNs)
     qaqc1 = batch1.qaqc
     qaqc2 = batch2.qaqc
-    if not qaqc1.empty or not qaqc2.empty:
-        qaqc1_sub = qaqc1.copy() if not qaqc1.empty else pd.DataFrame()
-        qaqc2_sub = qaqc2.copy() if not qaqc2.empty else pd.DataFrame()
-        qaqc1_sub["System"] = batch1.config.name
-        qaqc2_sub["System"] = batch2.config.name
-        qaqc_combined = pd.concat([qaqc1_sub, qaqc2_sub]).reset_index()
-        qaqc_combined.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
-        qaqc_table_html = qaqc_combined.to_html(classes='table', border=0, index=False)
-    else:
-        qaqc_table_html = None
 
+    if not qaqc1.empty:
+        q1 = qaqc1.copy().reset_index()
+        q1.rename(columns={
+            "group_name": "Sample Identifier", 
+            f"corrected_{batch1.config.target_column}": f"Measured {batch1.config.target_column} (‰)",
+            "True_Value": "True Value (‰)"
+        }, inplace=True)
+        qaqc1_table_html = q1.to_html(classes='table', border=0, index=False)
+    else:
+        qaqc1_table_html = None
+
+    if not qaqc2.empty:
+        q2 = qaqc2.copy().reset_index()
+        q2.rename(columns={
+            "group_name": "Sample Identifier", 
+            f"corrected_{batch2.config.target_column}": f"Measured {batch2.config.target_column} (‰)",
+            "True_Value": "True Value (‰)"
+        }, inplace=True)
+        qaqc2_table_html = q2.to_html(classes='table', border=0, index=False)
+    else:
+        qaqc2_table_html = None
 
     def get_iso_info(b):
         return {
@@ -715,7 +726,7 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
             "anchors": ", ".join(b.anchors.keys()) if b.anchors else "None",
             "controls": ", ".join(b.controls.keys()) if b.controls else "None",
             "drift_monitors": ", ".join(b.drift_monitors.keys()) if b.drift_monitors else "None",
-            "excluded_rows": getattr(b, "excluded_rows_list", []),
+            "excluded_rows": ", ".join(map(str, b.excluded_rows_list)) if b.excluded_rows_list else "None",
             "blank_correction_applied": b.blank_correction_applied,
             "blank_info": b.blank_info,
             "drift_correction_applied": b.drift_correction_applied,
@@ -756,7 +767,8 @@ def generate_dual_isotope_html_report(batch1, batch2, filepath: str, title: str 
         "cal_plot_1_html": _create_calibration_plot(batch1),
         "cal_plot_2_html": _create_calibration_plot(batch2),
         "results_table_html": results_table_html,
-        "qaqc_table_html": qaqc_table_html,
+        "qaqc1_table_html": qaqc1_table_html,
+        "qaqc2_table_html": qaqc2_table_html,
     }
 
     html_content = template.render(context)

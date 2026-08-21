@@ -170,10 +170,26 @@
 </div>
 
 <div class="section">
-    <h2>Quality Control (QA/QC) Summary</h2>
-    {% if qaqc_table_html %}
-        <div class="table-container">
-            {{ qaqc_table_html | safe }}
+    <h2>Quality Control (QA/QC) Trueness Monitors</h2>
+    {% if qaqc1_table_html or qaqc2_table_html %}
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            {% if qaqc1_table_html %}
+            <div style="background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b; border-bottom: 2px solid #3b82f6; padding-bottom: 6px; margin-bottom: 12px;">
+                    QA/QC: {{ iso1.system_name }} ({{ iso1.target_column }})
+                </h3>
+                <div class="table-container">{{ qaqc1_table_html | safe }}</div>
+            </div>
+            {% endif %}
+
+            {% if qaqc2_table_html %}
+            <div style="background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b; border-bottom: 2px solid #10b981; padding-bottom: 6px; margin-bottom: 12px;">
+                    QA/QC: {{ iso2.system_name }} ({{ iso2.target_column }})
+                </h3>
+                <div class="table-container">{{ qaqc2_table_html | safe }}</div>
+            </div>
+            {% endif %}
         </div>
     {% else %}
         <p style="color: var(--text-muted); font-style: italic;">No Quality Control standards (trueness monitors) were registered in this dual analytical run.</p>

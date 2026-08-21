@@ -81,6 +81,7 @@ WATER_H_MAPPING = {
     "Identifier 2": "sample_id_2",
     "Peak Nr": "peak_nr",
     "d 3H2/2H2": "d2h",
+    "d 2H/1H": "d2h",
     "Ampl 2": "amp_2",
     "Area 2": "area_2",
 }

@@ -51,6 +51,21 @@ When working in a team or as an individual agent, tasks are typically split into
 *   **Standard Naming:** Always use `get_canonical_name` from the [Batch](file:///home/damianp/Proyectos/isotools/isotools/core.py#L21) class to resolve messy raw standard names into their canonical form before processing.
 *   **Testing:** Always write corresponding tests in [tests/](file:///home/damianp/Proyectos/isotools/tests) for any new configuration, reader improvement, or math correction.
 
-## 4. Useful Tasks
+## 4. Report Writing & Markdown/HTML Compatibility Guidelines
+To ensure reports render seamlessly across Markdown editors (e.g., MarkText) and exported standalone HTML documents:
+
+*   **Strict Math Block Formatting (KaTeX / MathJax Compatibility):**
+    *   Place display math `$$` on its own dedicated line surrounded by blank lines above and below. Never inline `$$` on the same line as text or list items.
+    *   Use `\text{...}` instead of `\mathrm{...}` for non-ASCII units and labels (e.g., `\text{‰}`, `\text{V s}`, `\text{sample}`). `\mathrm{}` panics in KaTeX on non-ASCII symbols (`‰`, `°`, `\mu`).
+    *   Keep subscripts ASCII-clean (`\delta_{\text{sample}}` or `\delta^{13}\text{C}`).
+*   **Symbol & Unit Formatting:**
+    *   Do not use raw Unicode middle dots `·` (`U+00B7`) inside math delimiters (`$ ... $`), as they trigger `\cdotp` font fallback artifacts in KaTeX. Use standard spaces `\text{V s}` for units or `\times` for multiplication (`3 \times \sigma`).
+*   **Markdown-to-HTML Compilation & Asset Embedding:**
+    *   **Author with Relative Paths:** Author `.md` files using relative image paths (`assets/fig1.png`) so the Markdown source is clean and previewable in editors.
+    *   **Math Protection in Build Scripts:** Protect LaTeX math blocks (using letter-only tokens like `MATHBLOCKXYZ0000`) before running Markdown parsers to prevent conversion of math underscores (`_`) into `<em>` HTML tags.
+    *   **Post-Math Base64 Injection:** Inject Base64 image Data URIs (`data:image/png;base64,...`) into `<img>` tags *after* math protection and restoration are complete.
+    *   **Image Responsive Styling:** Include explicit CSS rules (`max-width: 100%; max-height: 480px; display: block; margin: 20px auto;`) to prevent high-DPI figures from overflowing page boundaries.
+
+## 5. Useful Tasks
 *   **View Roadmap / Tasks:** Check [BACKLOG.md](file:///home/damianp/Proyectos/isotools/BACKLOG.md) to see current development phase tasks.
 *   **Running Tests:** Execute `pytest` in the root folder to run the suite of unit and integration tests.

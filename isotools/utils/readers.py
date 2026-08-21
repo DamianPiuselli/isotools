@@ -52,38 +52,32 @@ class IsodatReader:
         df.columns = df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
 
         # 3. Validate and Rename Columns Case-Insensitively
-        # We distinguish between 'Essential' (required for logic) and 'Optional' (contextual)
-        essential_internal_names = ["sample_name", "row", "peak_nr", self.config.target_column]
+        # 3. Validate and Rename Columns Case-Insensitively
+        # Essential internal names are required for logic if defined in the config mapping
+        all_essentials = ["sample_name", "row", self.config.target_column]
+        if "peak_nr" in self.config.column_mapping.values():
+            all_essentials.append("peak_nr")
+        essential_internal_names = [name for name in all_essentials if name in self.config.column_mapping.values()]
 
         # Build normalized lookups for existing columns: normalized_header -> original_header
         df_cols_norm = {col.lower().replace(" ", ""): col for col in df.columns}
 
         # Build dynamic mapping from original header in df to internal name
         dynamic_mapping = {}
-        missing_essential = []
-        missing_optional = []
-
         for raw_col, internal_name in self.config.column_mapping.items():
             raw_col_norm = raw_col.lower().replace(" ", "")
             if raw_col_norm in df_cols_norm:
                 actual_col = df_cols_norm[raw_col_norm]
                 dynamic_mapping[actual_col] = internal_name
-            else:
-                if internal_name in essential_internal_names:
-                    missing_essential.append(raw_col)
-                else:
-                    missing_optional.append(raw_col)
+
+        # Check if all essential internal names were satisfied by mapped columns
+        found_internal_names = set(dynamic_mapping.values())
+        missing_essential = [name for name in essential_internal_names if name not in found_internal_names]
 
         if missing_essential:
             raise ValueError(
                 f"Missing ESSENTIAL columns in '{filepath}': {missing_essential}. "
                 f"These are required for IRMS processing. Found columns: {list(df.columns)}"
-            )
-
-        if missing_optional:
-            warnings.warn(
-                f"Missing optional columns in '{filepath}': {missing_optional}. "
-                "Calculations will proceed but some metadata may be lost."
             )
 
         # 4. Rename Columns using Dynamic Case-Insensitive Mapping

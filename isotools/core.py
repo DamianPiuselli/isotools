@@ -64,7 +64,6 @@ class Batch:
         self.linearity_substance_used: Optional[str] = None
         self.linearity_area_ref: Optional[float] = None
         self.linearity_info: Optional[Dict] = None
-        self.excluded_rows_list: List[int] = []
         self.use_method_precision: bool = False
         self.summary: Optional[pd.DataFrame] = None
         self.strategy: Optional[CalibrationStrategy] = None
@@ -298,6 +297,15 @@ class Batch:
 
 
 
+    @property
+    def excluded_rows_list(self) -> List[int]:
+        """Returns a sorted list of unique Isodat row IDs currently marked as excluded."""
+        if hasattr(self, "replicates") and isinstance(self.replicates, pd.DataFrame) and "row" in self.replicates.columns and "excluded" in self.replicates.columns:
+            excluded_df = self.replicates[self.replicates["excluded"]]
+            if not excluded_df.empty:
+                return sorted(list(excluded_df["row"].unique().astype(int)))
+        return []
+
     # --- Data Cleaning ---
 
     def exclude_rows(self, row_ids: List[int]):
@@ -310,7 +318,6 @@ class Batch:
         if "row" in self.replicates.columns:
             mask = self.replicates["row"].isin(row_ids)
             self.replicates.loc[mask, "excluded"] = True
-            self.excluded_rows_list = sorted(list(set(self.excluded_rows_list + row_ids)))
             # Invalidate summary cache since data changed
             self.summary = None
         else:
@@ -1003,7 +1010,7 @@ class Batch:
         if not qc_rows:
             return pd.DataFrame()
 
-        return pd.DataFrame(qc_rows)[
+        df_qc = pd.DataFrame(qc_rows)[
             [
                 "True_Value",
                 f"corrected_{self.config.target_column}",
@@ -1011,6 +1018,9 @@ class Batch:
                 "Within_Unc",
             ]
         ]
+        num_cols = ["True_Value", f"corrected_{self.config.target_column}", "Bias"]
+        df_qc[num_cols] = df_qc[num_cols].round(2)
+        return df_qc
 
     def save_report(self, filepath: str):
         """
