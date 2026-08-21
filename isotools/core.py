@@ -21,6 +21,7 @@ from .models import ReferenceMaterial
 from .standards import get_standard
 from .strategies.abstract import CalibrationStrategy
 from .reporting.html import generate_html_report
+from .reporting.excel import export_batch_to_excel
 
 
 class Batch:
@@ -1026,50 +1027,7 @@ class Batch:
         """
         Exports the Results and QAQC tables to a multi-sheet Excel file.
         """
-        if self.summary is None:
-            raise RuntimeError("Run .process() before exporting the report.")
-
-        with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
-            # 1. Results Sheet
-            self.report.to_excel(writer, sheet_name="Results")
-
-            # 2. QAQC Sheet
-            qaqc_df = self.qaqc
-            if not qaqc_df.empty:
-                qaqc_df.to_excel(writer, sheet_name="QAQC")
-
-            # 3. Parameters/Metadata Sheet
-            params = {
-                "System": self.config.name,
-                "Strategy": self.strategy.__class__.__name__ if self.strategy else "None",
-                "Target Column": self.config.target_column,
-                "Filepath": self.filepath,
-                "Anchors": ", ".join(self.anchors.keys()),
-                "Controls": ", ".join(self.controls.keys()),
-                "Drift Monitors": ", ".join(self.drift_monitors.keys()),
-                "Drift Correction Applied": self.drift_correction_applied,
-                "Drift Monitor Used": self.drift_monitor_used if self.drift_correction_applied else "None",
-                "Drift Slope": getattr(self, "drift_slope", "None") if self.drift_correction_applied else "None",
-                "Drift Slope 95% CI": getattr(self, "drift_ci95", "None") if self.drift_correction_applied else "None",
-                "Linearity Correction Applied": self.linearity_correction_applied,
-                "Linearity Slope": self.linearity_slope if self.linearity_correction_applied else "None",
-                "Linearity Slope 95% CI": getattr(self, "linearity_ci95", "None") if self.linearity_correction_applied else "None",
-                "Linearity Slope Source": getattr(self, "linearity_source", "None") if self.linearity_correction_applied else "None",
-                "Linearity Reference Substance": self.linearity_substance_used if self.linearity_correction_applied else "None",
-                "Linearity Ref Area": self.linearity_area_ref if self.linearity_correction_applied else "None",
-
-
-                "Blank Correction Applied": self.blank_correction_applied,
-                "Blank Identifier": self.blank_info["identifier"] if self.blank_correction_applied and self.blank_info else "None",
-
-            }
-
-            if self.strategy:
-                # Add fit parameters if available
-                params["Slope"] = getattr(self.strategy, "slope", "N/A")
-                params["Intercept"] = getattr(self.strategy, "intercept", "N/A")
-
-            pd.Series(params).to_frame("Value").to_excel(writer, sheet_name="Parameters")
+        export_batch_to_excel(self, filepath)
 
     def save_html_report(self, filepath: str):
         """
