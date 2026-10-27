@@ -10,7 +10,13 @@ isotools/
 ├── examples/
 │   └── dual_isotope_water/     # Synthetic dual-isotope water workflow & report generator
 │       ├── generate_synthetic_water_data.py
-│       └── process_and_report_water.py
+│       ├── process_and_report_water.py
+│       ├── synthetic_water_sequence.xlsx
+│       ├── Synthetic_Water_2H_Report.html
+│       ├── Synthetic_Water_2H_Report.xlsx
+│       ├── Synthetic_Water_18O_Report.html
+│       ├── Synthetic_Water_18O_Report.xlsx
+│       └── Synthetic_Water_Dual_Isotope_Report.html
 ├── isotools/                   # Main package source
 │   ├── __init__.py
 │   ├── core.py                 # The 'Batch' controller & canonical CF-IRMS pipeline

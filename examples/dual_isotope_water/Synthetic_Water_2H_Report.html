@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isotools Report - Water (2H)</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #eff6ff;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --success-bg: #ecfdf5;
+            --danger: #ef4444;
+            --danger-bg: #fef2f2;
+            --warning: #f59e0b;
+            --warning-bg: #fffbeb;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.5;
+            color: var(--text);
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 30px 20px;
+            background-color: var(--bg);
+        }
+
+        /* Header block with elegant gradient styling */
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #ffffff;
+            padding: 35px 40px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(37, 99, 235, 0.15) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            margin: 0 0 15px 0;
+            font-size: 2.25rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            background: linear-gradient(to right, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            border-top: 1px solid #334155;
+            padding-top: 20px;
+        }
+
+        .metadata-item strong {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        /* Alert Section styling */
+        .alert-box {
+            background-color: var(--warning-bg);
+            border-left: 6px solid var(--warning);
+            padding: 24px;
+            margin-bottom: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .alert-box h2 {
+            margin-top: 0;
+            color: #92400e;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Section layout */
+        .section {
+            background: var(--surface);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 30px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .section:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        .section h2 {
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #1e293b;
+            border-bottom: 2px solid var(--bg);
+            padding-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Plot layout - Responsive Flex */
+        .plot-container {
+            width: 100%;
+            max-width: 100%;
+            min-height: 450px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        /* Beautiful tables */
+        table.table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        table.table th, table.table td {
+            text-align: left;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        table.table th {
+            background-color: #f8fafc;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            user-select: none;
+            cursor: pointer;
+            position: relative;
+            transition: background-color 0.15s ease;
+        }
+
+        table.table th:hover {
+            background-color: #f1f5f9;
+            color: var(--text);
+        }
+
+        table.table th::after {
+            content: '↕';
+            margin-left: 6px;
+            opacity: 0.3;
+            font-size: 0.75rem;
+        }
+
+        table.table th.sort-asc::after {
+            content: '↑';
+            opacity: 1;
+            color: var(--primary);
+        }
+
+        table.table th.sort-desc::after {
+            content: '↓';
+            opacity: 1;
+            color: var(--primary);
+        }
+
+        table.table tbody tr {
+            transition: background-color 0.15s ease;
+        }
+
+        table.table tbody tr:hover {
+            background-color: #f8fafc;
+        }
+
+        table.table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        .badge-success {
+            background-color: var(--success-bg);
+            color: #047857;
+        }
+
+        .badge-danger {
+            background-color: var(--danger-bg);
+            color: #b91c1c;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(550px, 1fr));
+            gap: 25px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .metadata {
+                grid-template-columns: 1fr;
+            }
+            body {
+                padding: 15px 10px;
+            }
+            .header {
+                padding: 25px 20px;
+            }
+        }
+    </style>
+    
+</head>
+<body>
+
+<div class="header">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 20px;">
+            
+            <div style="background: #ffffff; padding: 6px 12px; border-radius: 12px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: center;">
+                <img src="data:image/jpeg;base64,/9j/7gAOQWRvYmUAZAAAAAAA/9sAQwADAgICAgIDAgICAwMDAwQGBAQEBAQIBgYFBgkICgoJCAkJCgwPDAoLDgsJCQ0RDQ4PEBAREAoMEhMSEBMPEBAQ/8AAFAgAjABcBEMRAE0RAFkRAEsRAP/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/aAA4EQwBNAFkASwAAPwD9U6/VOv1Tr9U6KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK+dvi7+2R4W+E/wAZ9F+Fd7oxu7Wbyf7a1MT7RpxmP7vCYO/AId+RhWGMmvO/F3xk0rwn4zsvCs9mZYn2fbbkSY+zb/u8Y5wME8jg0UV9EKysoZSCCMgjoRXoYIIBByDRRS0tFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFZ3iPX9N8LaBqPiXWJxDY6Xay3dw57Iilj+PHFVtSv7bStPudSvH2QWsTTSH0VRk0UV+O3jvW9R+IHjDW/GusAm61u9lvJATnYGPyoPZV2qPYV8d69e3PiDWL3WrwZlvZnmYegJ4X8BgfhSUV+lP7HvxTPxL+DmnQahc+ZrPhsLpN/uOWcIv7mU/wC9Ht57srV9K/B7xT/wk3g23juJN17puLS4yeSFHyN+K4/EGiivca7ilooooooooooooooooooooooooooooooooor5R/bs+KI0/wAOWfwl0i5/0vWit3qew8paI3yIf99xn6IfWvKPjt4pFvpsPhK0k/e3uJrrB+7ED8qn/eYfkvvRRXxGNLO3pXiP2bjpRRXqv7MfxVb4NfE63u9RnKaBrQWw1UH7sak/u5/+AMef9lnrq/hj4qPg3xPHNcOVsL3FvdDsoJ+V/wDgJ/Qmk+lFfpmjpIiyRurIwDKynIIPQg19MqysAykEEZBHcUtFOpaKKKKKKKKKKKKKKKKKKKKKKKKKK574geN9H+HPg/U/GWuyYtdNhMmwHDSueEjX/aZiAPrWd4g1yz8OaPdazftiK2TdgdXboqj3JwKKK/MnxR4j1v4heK9S8ZeIZfMvtUmMzgfdjXoka+iqoCj2FfMmqajfeItWudZ1F9090+8+ijso9gMAUnSiq4035c7f0pgteOlFFZ9/pw2kFetVri24PFLRX2V+xf8AHOTxJpZ+Eniq7Laro8O/SppG+a5s14MZJ6vHx9Ux/dNezfBfx02pWv8AwiWqzE3dmmbV2PMsI/h+q/y+lJRX1LXqVLRRRRRRRRRRRRRRRRRRRRRRRRRXw1+2f8WT4r8ZQ/C/Rbndpvh1xLqBU/LNfEcKfURqcf7zN6V4Z8aPFp1XWU8L2UmbbTm3XGDw85HT/gIP5k+lFFeK6Tp+5V+WuKtbfgcUlFbq6ZlPu1eFscZxS0Vlanp2FJ21Vubfg8UUVzVlreteCvEen+LPD1ybfUdKuFubeQdNw/hI7qRkEdwSKzYL690TUrfVtOlMdzayCWNvcdj7HofY0UV+n/wq+I2j/FfwHpXjjRSFjvosTw5y1vOvEkTe6sD9Rg96+n/CniOz8V6Da65ZEBZ0+dM8xyDhlP0P9KKK62teiiiiiiiiiiiiiiiiiiuJ+M/xFtvhV8M9d8bzbGmsrcrZxt/y0uXOyJfcb2BPsDWJ408Rx+FPDN9rb4LwR4hU/wAUrcIPzI/DNFFfmz4K8PeI/HWo393A0d1dhX1C+uLq6jhX5pAGkZ5GC5LyDv1NfNmi6dqOu3M8yFZZQDcTySyqg5YAsWYgcsw/OiivVNF+F/iRxtiGlTOqM+yHV7WRyFBY4VZCTwCeK6qy8L6keF+yOQCdqXcTE4GTgBueKKKE0zMQOO1C22VzikorPn8N6nqsklvpWmXV5KiGRkt4WkYKO5Cg8VXk026u2ZLS1lmYDcVjQsQPXilorzHxFabN6lcHniuY1GLGciiivZP2FfivJ4V+I138LtUuSNN8UKZrMM3yxX8a5wPTzIwQfUoldl8CvFjaV4kl8L3UmLbVAXhBPCzqO3+8oI+oFJRX6BV9A0tFFFFFFFFFFFFFFFFFfHn/AAUT8Uz2+ieDfBcMhEd/eXGo3Cj+IQoqJn8ZmP4CvHf2idUeOy0bRUYhbiaS5kHrsAC/q5/KiivBPhNGDoHjMEcHQk/9LrWuC8JLnT9Z97Ff/R8VFFelfCG3X/hKrEhekdx2/wCmEldL4PjH9qwHH8Mn/otqKK0IrdFiVcdqsJEoQA+lITzRR4qE2j+G9P0+zleCW+Y6lcNGxVjhikAyOflCu493z6UaqHs9Nt7aFmR5ybmQqcE4JCD8ME/8Co60V5l8WYEvLmy8Soij+3LNbmbaMD7SrGOf83Qv/wADrmPFsYmkg1JQB9uhEr46eaCVf82Un/gVFFeOWmvXng/xbo/ivT3KXOj6hb3sbA945A2PxwR+NcdFfzaRq9nq1uxElncRzqR6qwP9KKK/Y+2uI7q2iuojlJkWRT7EZFfZEUiyxpKh+V1DD6GloqWnUUUUUUUUUUUUUUV8U/8ABRfRbj7V4D8SKpNupvbFzjhXPluv5hX/AO+a8U/aLspPN0HUgCYx58DH0J2sP5H8qTvRXjnwkx/YPjL/ALASf+l1rXG+Ev8Ajw1n/rxX/wBHxUtFeo/CAD/hJ7I/9M7j/wBESV1Pg8f8TOD/AHZP/QGooq9aW097PDZ2yF5p3WONR3ZjgD8zViKN5pEhjXLuQqj1JplFRfESaC41S4W2YNb2wW0hYdCkShAR9dufxqPxG6SXUgiOY4gIkI/uqNoP44z+NOFFeceI4/7U8AXCIN02gah5xHcW1yoVj9FljT8Za5zUV+1aBIo5fT7jefXy5QAT9Ayr/wB9Ud6K8OudHuvEOu2GgWEZkudTvIbOFR1LyOFH6muGks5dQv7fT7dS0lzMkKAdyzAD+dFFfshZWy2VnBZocrBEsQPsoA/pX2TBEIIY4VORGoUfgMUtFT0+iiiiiiiiiiiiiivP/jp4Fk8f/DfU9LsNH0vUtVtF+26ZDqNqs8JuYwcLtPdlLID23Zrn/HWhNr/hu6tYLO1ubuIefapcxCRDIvQYPqMj8aSivgLS/iHqktjfaGPDHh7SPtqC1vPsWlrbzbVkVyhOcj50XI9q8BtPEV00E9iNM06085fKm8m1Eb4DA7c9uVH5UtFd34E1q50a/t9SszH50OdokTcpypUgg9Rgmt3Qb2SynjuYSu9M43DI5GDkfQ0UV3o8VXqKTZ6dpVnIVKia2skSRQRg7W7HB6jmug/tSYAmG3tYWIIDxwhWGfQ9qaaK47X5QItnoKxdQcBcelKOlFecXmv3+gXkl7pzxbnjeCWOaJZYpom+9HIjAhlOBwe4BHIBrm5tQuNPmae2K5ZSjq6hkdT1VlPBFLRXrX7IPhi7+I3xAm8Zap4J8L22i+GDviubfR0ile/P+rCPngoMuSOnyetdb8INMm8R+IH1m60TS4rLTOUljs1VmnP3Qrew5P4etFFfcde5UUUUUUUUUUUUUUUUUUUUUUV8qftK/s03V9qlz8Tvh1YGW5nJl1bTIV+aVu88QHVj/EvU9RznPlXxK+Gks91J4n8OQb5HO+7tUHLHvIg7n1HfrRRXgugXjRkK4KspwQRggjqDXA6fMV+U8EHBB7Giiu0g1NfKGT2rajuvk60UVha5fhg3NUb6fIPNFFUvAXwf8W/GXxANN0OBrfTonAvtTkQ+Tbr3A/vvjoo/HA5qDQfB+r+Mr8WtjGY7ZWHn3LD5Ix/VvQUUV99eAvAvh74b+FbHwh4YtPIsrJMZPLyueWkc92Y8k/0AFe+6BoWneG9Kg0fTItkEAxk/edj1Zj3JNFFdDWjRRRRRRRRRRRRRRRRRRRRRRRRRRXnvjn4FfDvx5cPqOoaU1lqUnLXtiwikc+rjBV/qQT71z2u+BPDuvSNc3FqYLlus8B2MT79j+Ioorzyf9kiASf6H48nWPPAlsVZgPqHAP5Vzr/CRA2INecL6PACfzBFFFa2g/sn+BbKdbjxHqmoa2VOfJYiCFvqE+Y/99VcsPhPoUMgk1K6uL7BzsP7tD9QOf1oor2PSdH0rQdPh0rRdOt7GzgXbHBBGERR7AV2NpZ2thbpa2VvHBDGMKkahQPwFFFXKmoooooooooooooooooopGJCkqu4gcDOM0jEhSVXJA4GetIenAzSHpxXwzqP/AAVBXTPjE3wEuP2a/Fh8bjVk0RdOXWLIh7pyNgEmdm0hlbdnGDmvjy+/4KILp/xTb4Lz/AHxMfFw1NdIWwXVLQhrhiNoD52bSGB3Zxg5rzqX4xCHXj4afwlff2j54txEJ4+XPTnpjkHNcXJ8ShHq50NvDt19t80Q+WJU5Y9Oen419xWsk01tDLc25gleNWkiLBvLYjlcjg4PGRX2BbvLLbxSTweTK6Kzx7g2xiOVyODg8Zr0RCzIrOu1iASuc4PpXaKSVBZdpI5GelVtbvNR0/Rr6+0jSH1W+t7eSW2sUmSFrqVVJWIO/wAqFiANzcDOTVfV7q+stKvLzS9MbUbyCB5ILNZViNxIFJWMO3yqWOBk8DPNNuJJYreSSCAzSKpKRhgpc44GTwM02Z5I4XeKIyuqkqgIG49hk9K+Lfhf/wAFO7X4s/F+y+CPhr9nfxUviW4vprK4hn1WzRbTyC32h5GJxiMI5ODk7cDJIr5N+Hf/AAULtviZ8UbT4RaB8DPEi+IJ7yW0nim1K1VbXySfPdyTjEYVicHnGBkkV5/o/wAX01vXY/D1p4WvRdtI0bq00YCbfvk/TBrjtN+JCapqyaNb6BdfaWcowMqDZt+8T9MGvtjUZ7u10+6ubCxN7cxQu8NsJFjM0gUlU3Nwu44GTwM819b301zb2VxcWdmbu4iid4rcOEMrgEqm48Lk4GTwM16DKzpE7xx+Y6qSqZxuOOBk9K7KRmWNmRN7AEhc4yfTNfEXhT/gp/H4w+MUPwH0n9m3xb/wmUmqTaRLYSavZKIJ4S3n7nzt2oI3YnOCF4zxXyH4a/4KHp4p+KcXwa034B+Jv+ErfUZdMks31O0AhmiLedufO3agRyTnGF4zxXnll8YRf68vhuDwnffbzM0BjM8Y2sud2T0wMH8q4y1+JIu9WGiReHbr7YZTEUMqcMM5yenGDXsv7W37WJ/ZM0LSfF2tfCzWPEvh/Urj7FLqFhfQRC1uiGaOJ0kO47lRyGAx8uDyRXq37Tf7Sx/Zn0bTPE+rfDjVNf0S/n+ySX1leQxi2uCCUjdHO47lViGAx8uDzit/xv42/wCEJtoL640ae7tZW8syxSKNj9lIPPIB59q1/FXin/hFoIrubTJriCRthkjdRtbsCDzzg1qfsqftKS/tSeBrn4jWPw01XwtoX2k2unz6hewTG/ZCyylFjOVVGAXLAZJOOhrR/Zu+Psv7Rfg648d2fgDUvDmj/aDb2M17dwym9ZCVlKqhyoVgBlsZOcdDU3gvxa3jLTn1WPSJrO237ImlkVjIRkNgDoAeOal8MeIj4msm1BNOltoN22NpHU7yOuAOmK9sr1yuhrZoooooooooooor8ZfF/wDymGtv+x+03/0lir8pPE//AClLt/8AsdbD/wBJ468Cvv8Akuyf9hOL/wBAWvIbr/krK/8AX/H/AOgiv2ar9W699r16iiiivxm/Ye/5Sg65/wBhbxb/AOhT1+Un7IH/ACkQ1j/sJ+Jv5zV4H8O/+Sw3H/Xe+/m1eQ+C/wDkpU3/AF1uv/Zq/Zmv1br3yvXq/EDwf8SfCPwi/wCCoPiX4h+O76az0PSfGniM3U0NrJcOvmJcxriONWdvmdRwDjOa/ITwv4+8MfDD/goj4g8ceMrya10fTfFmvG4mit5J2Xetwi4SMFj8zAcD3r54sdWsdD+MV3qmpSNHbwX93vZULkZDgcDk8kV4xaajaaT8Srm/vnKQxXlxuYKWIyGA4HPU17l/wUh/bH+Afx5/Z5t/BHw08Tajf6uniOyvzFcaLeWq+THHMGO+aNVzl14zk17D+3t+1R8FvjN8DoPCHgDxBfXuqJr1peGKfSbq2XykSUMd8sarnLDjOa6L4sePPDXiXwumnaRdyyzi7jkKtbyINoDZ5YAdxW18Q/F2h65oC2WnXMkkouEfDQuowAc8kY719L/8EsP+TLvCP/X9qv8A6Wy17/8A8E4v+TTfDH/X5qX/AKVyV1vwZ/5ECx/66zf+jDXR/DL/AJE+1/35f/QzX1tX03XcV1VFFFFFFFFFFFFfjL4tIb/gsNb7SDjx/pw4/wCvaKvyj8TEN/wVLg2nOPGtiOP+veOvAr7n47Jj/oJxf+gLXkN1z8WV/wCv+P8A9BFfpB+1V+1Tpf7NcPgmxi0S317XvG/iK10W001r37O6QSNtlushWJVC0YxgAlwMivvT9pH9pDT/AIAxeEbOHSINa1rxfrtvpNtp7XfkMsLttkuMhWJCFkGMclgMivWPGnjOHwkunRLbrc3Oo3SW6QmTYQpOC/Q9Mj869C8T+J4/Dq2aCFZ5724WFIy+0hSeW6Hpx+de9V7RXS1uV+Mn7Drof+CoGtEOCG1bxbtOevM/Svyi/Y/dT/wUP1YhgQ2p+Jsc9eZq8C+HRB+MNwc9Z77/ANmryHwWR/wsqbnrLdf+zV+zdfq7XvtevV+MvwEMb/8ABXXU921lbxr4nHPIJ8m7r8pPguY3/wCCnuo52kHxb4hHPQ/urmvA/DWD8cpuhB1C8/8AQXryHQ8H4rS9P+Py5/k1fW3/AAWCjhj/AGTrQrGik+L9NAwACf3VxX0z/wAFR44k/ZptSqIpPiiwHAA/5Zz123x1VR4JjwAP9Oi/9Beup+LIUeFkwAP9Lj/k1db/AMEryD+xd4RwQcX2qg/+BstdP/wThIP7J3hjBBxeakD/AOBclXvgz/yIFl/11m/9GGrfwy/5E+1/35f/AEM19b19N13FdVRRRRRRRRSMu5SpJGRjIODSMNylSSMjHBwaQjIxSda+WNR/4Jn/ALJmr65ceJ9T8LeI7rWLu4a6nv5fFGoNcSTMcmQyGXcWJ75zXzlff8E/f2aNT1ifxDqHhzXbjVLmZrma9k8RXrTvKTkuZDJuLZ75zXGy/CPwTPcPeTWd087sXaVryUuWPfO7Oa5mT4c+FpZ2uZbW4aV23NIbmTcT65zVnTP+Cbn7KOl+JdL8XReEdcuNV0e7gvbOe78R31wUlikDpxJKcgMoODxU+n/sEfs16b4g07xRH4Y1ifUtKuYbu1mutevJykkTh0+/IcgMAcHinQ/CfwVDdw3y2Nw00DrIjPdyNgqcjqfUU6P4eeF4rmK7FpM0sLK6M9w7YIOR1NfSOt6Tb6/o19od3PdwwahbyWsklpcPbzorqVJjlQhkYA8MpBB5Br3vV9Mg1rSrzR7ma5ihvYHt5JLad4ZlV1KkpIhDI2DwykEHkV1txAtzBJbuzqsqFCUcqwBGOCOQfcV0U0SzwvC7MFkUqSrFWAPoRyDXzh4T/wCCcf7LPgbxZp/jnwp4a8Q6dr2mXQvLe+h8TX6yiXOSS3m5YNkhgchgSDkE14N4Z/YO/Zy8H+JrLxj4b8P65Yazp9wLqC8i8QXglEmcklvMywbkMDwwJByCa5Oy+FPg3Tr2LUbK0uormF/MSRbuTdn655z39a561+H3hmyukvbW2uI5423q4uXzn86+ldRsotT0+502aWeOO7heB3glaKRVZSCUdSGVhnhgQQeRXv19aR6hZXFhLJNGlzE8LPDI0cihgQSrrgq3PBByDyK62WMTRPEzMA6lSVYgjI7EdDXRSIJI2jYsAwKkqcHn0PavmXR/+CbX7KugeJrfxpo/hvxJaa9a3f26LUo/FOoC5Fxu3GTzPN3FiScknnJznNfPml/sDfs36L4hg8WaXoOv22tW1z9sjv4/Ed6LgTZyZPM8zcWJJyc85OetcjB8JvBlteJqEFpdpco/mLKLyXfu9c7s5rnIvh54YguVvIre4WdW3iQXMm7d65zXo/x3/Zc+EX7SS6ZB8WtP1fUrXSCzWtpBrFza24dv+WjRROqM4GQGIJAJAOCa734y/s6/DD4+Lp8PxMsdT1C30zc1vbQ6rcW8Ac/xtHG4VnxkBiMgEgda1fEng3Q/FghXW4p5kgyURZ3RM+pUHBPvWhrfhrSvEIjXVY5ZFi5VFmZVz64BwT71d+Bf7OXwv/Zx0fUPD/wqstVsNM1GZbiWzutWuLuFJACC0aSuwjLZ+baBuwM5wKtfBz4EfDv4D6Xe6H8N7TUrLT7+VZ5LW51Ke5iSQAgtGsjEITn5tuM4Gc4FSeHPCmj+FIJbXRY5ooZWDGN52dQfUBicZ7460/RPD+m+HoZLfS0lSOQ7ijSs4B9QCeK9Or0OtitKiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiv//Z" alt="LIH Laboratory Logo" style="max-height: 60px; width: auto; object-fit: contain;">
+            </div>
+            
+            <div>
+                <h1 style="margin: 0; font-size: 2.1rem;">Isotools Analytical Report</h1>
+                <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.9rem;">
+                    Laboratorio de Isotopía Hidrológica (LIH)
+                </p>
+
+            </div>
+        </div>
+        <div style="text-align: right;">
+            <span class="badge" style="background: rgba(255,255,255,0.12); color: #f1f5f9; font-size: 0.8rem; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.2);">
+                ISO 17025 Pipeline
+            </span>
+        </div>
+    </div>
+
+
+    <div class="metadata">
+        
+        <div class="metadata-item"><strong>Isotope System:</strong> Water (2H)</div>
+        <div class="metadata-item"><strong>Source File:</strong> synthetic_water_sequence.xlsx</div>
+        <div class="metadata-item"><strong>Measurement Date:</strong> 2026-10-26</div>
+        <div class="metadata-item"><strong>Processing Date:</strong> 2026-10-26 23:08</div>
+        
+        <div class="metadata-item"><strong>Target Variable:</strong> d2h</div>
+        
+        
+        <div class="metadata-item"><strong>Calibration Strategy:</strong> MultiPointLinear</div>
+        
+        
+        <div class="metadata-item" style="grid-column: 1 / -1; border-top: 1px solid #334155; padding-top: 12px; margin-top: 5px; font-size: 0.88rem; color: #cbd5e1; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <strong>Pipeline Setup:</strong>
+            
+                <span class="badge badge-danger">Blank: Off</span>
+            
+
+            
+                <span class="badge badge-danger">Linearity: Off</span>
+            
+
+            
+                <span class="badge badge-success">Drift: Buenos Aires_H</span>
+            
+        </div>
+        
+    </div>
+    
+</div>
+
+
+<details class="alert-box">
+    <summary style="cursor: pointer; user-select: none; font-size: 1.1rem; font-weight: 600; color: #92400e; display: flex; align-items: center; justify-content: space-between;">
+        <span>⚠️ Automated Data Diagnostics & Alerts</span>
+        
+            <span class="badge badge-danger">1 active alert(s)</span>
+        
+    </summary>
+    
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width: 10%;">Row</th>
+                    <th style="width: 25%;">Sample Identifier</th>
+                    <th>Diagnostic Reason / Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td><strong>21</strong></td>
+                    <td>River_Water_04</td>
+                    <td>Single Replicate (n=1): Defaulted to instrumental method precision (1-σ = 1.40 ‰) for uncertainty propagation.</td>
+                </tr>
+                
+            </tbody>
+        </table>
+    </div>
+    
+</details>
+
+
+<details class="section" open>
+    <summary style="cursor: pointer; user-select: none; font-size: 1.3rem; font-weight: 700; color: #1e293b; border-bottom: 2px solid var(--bg); padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+        <span>📋 Processing Decisions & Data Lineage Audit</span>
+        <span class="badge badge-success">Audit Complete</span>
+    </summary>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 15px;">
+        <!-- Stage 1: Exclusions -->
+        <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">1. Exclusions & Data Cleaning</h3>
+            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Excluded Rows:</strong> 22, 30</p>
+            <p style="margin: 6px 0; font-size: 0.85rem; color: var(--text-muted);">Manual and diagnostic row exclusions applied prior to calibration.</p>
+        </div>
+
+        <!-- Stage 2: Blank Correction -->
+        <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">2. Mass-Balance Blank Correction</h3>
+            <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Status:</strong> 
+                
+                    <span class="badge badge-danger">Not Applied</span>
+                
+            </p>
+            
+        </div>
+
+        <!-- Stage 3: Linearity & Drift Correction -->
+        <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">3. Linearity & Drift Correction</h3>
+
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> 
+                
+                    <span class="badge badge-danger">Not Applied</span>
+                
+            </p>
+            
+
+            <p style="margin: 10px 0 4px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> 
+                
+                    <span class="badge badge-success">Applied</span> (Buenos Aires_H)
+                
+            </p>
+            
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> 0.0480 ‰/row</p>
+            
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [0.0315, 0.0646]</p>
+            
+            
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> 0.0013</p>
+            
+            
+        </div>
+
+        <!-- Stage 4: Calibration Strategy -->
+        <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">4. Isotopic Scale Normalization</h3>
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Strategy:</strong> MultiPointLinear</p>
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Anchors:</strong> Mar_H, Buenos Aires_H, Mendoza_H, Antartida_H</p>
+            
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Equation:</strong> Measured = 0.9792 × True + 2.1398</p>
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>R²:</strong> 0.9994</p>
+            
+        </div>
+
+        <!-- Stage 5: Uncertainty Budget -->
+        <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">5. ISO 17025 Uncertainty Budget</h3>
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Evaluation Model:</strong> Numerical Kragten Differentiation</p>
+            <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Uncertainty Basis:</strong> 
+                
+                    Sample Repeatability (Replicate SEM)
+                
+            </p>
+            
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Sample Repeatability (SEM):</strong> Standard Error of Sample Replicates (u = s / √n)</p>
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Instrumental Precision (1-σ):</strong> 1.4 ‰ (used if n = 1)</p>
+            
+        </div>
+
+    </div>
+</details>
+
+<div class="grid-2">
+    
+    <div class="section">
+        <h2>
+            Analytical Drift Analysis
+            
+                <span class="badge badge-success">Drift Correction Applied</span>
+            
+        </h2>
+        <div class="plot-container"><div style="height:100%; width:100%;">                            <div id="f3e9cbdd-ebe2-4c82-8c9f-4deba6dfc445" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("f3e9cbdd-ebe2-4c82-8c9f-4deba6dfc445")) {                    Plotly.newPlot(                        "f3e9cbdd-ebe2-4c82-8c9f-4deba6dfc445",                        [{"hovertemplate":"\u003cb\u003e%{text}\u003c\u002fb\u003e\u003cbr\u003eRow: %{x}\u003cbr\u003eValue: %{y:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"lightgrey","opacity":0.5,"size":8},"mode":"markers","name":"Samples\u002fOthers","text":["Mar_H","Mar_H","Mendoza_H","Mendoza_H","Antartida_H","Antartida_H","River_Water_01","River_Water_01","River_Water_02","River_Water_02","Rain_Water_01","Rain_Water_01","Rain_Water_02","Rain_Water_02","River_Water_03","River_Water_03","River_Water_04","Rain_Water_03","Rain_Water_03","Rain_Water_04","Rain_Water_04","Mar_H","Mendoza_H","Mendoza_H","Antartida_H","Antartida_H"],"x":[1,2,5,6,7,8,9,10,11,12,13,14,15,16,19,20,21,23,24,25,26,29,31,32,33,34],"y":[2.694,2.52,-68.499,-67.71,-89.938,-89.91,-41.424,-41.509,-48.102,-48.427,-14.936,-15.493,-24.657,-24.307,-61.075,-60.697,-73.746,-8.739,-8.451,-28.299,-28.373,3.823,-66.788,-66.804,-88.575,-88.879],"type":"scatter"},{"hovertemplate":"\u003cb\u003e%{text}\u003c\u002fb\u003e\u003cbr\u003eRow: %{x}\u003cbr\u003eValue: %{y:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"line":{"color":"DarkSlateGrey","width":1},"size":10},"mode":"markers","name":"Monitor: Buenos Aires_H","text":["Buenos Aires_H","Buenos Aires_H","Buenos Aires_H","Buenos Aires_H","Buenos Aires_H","Buenos Aires_H"],"x":[3,4,17,18,27,28],"y":[-35.428,-35.17,-34.414,-34.504,-34.256,-34.085],"type":"scatter"},{"hoverinfo":"skip","line":{"dash":"dash","width":2},"mode":"lines","name":"Buenos Aires_H Trend","x":[3.0,28.0],"y":[-35.275123248498716,-34.07457277666572],"type":"scatter"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"white","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"#C8D4E3","linecolor":"#C8D4E3","minorgridcolor":"#C8D4E3","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"#C8D4E3","linecolor":"#C8D4E3","minorgridcolor":"#C8D4E3","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"white","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"white","polar":{"bgcolor":"white","angularaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":""},"radialaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":""}},"ternary":{"bgcolor":"white","aaxis":{"gridcolor":"#DFE8F3","linecolor":"#A2B1C6","ticks":""},"baxis":{"gridcolor":"#DFE8F3","linecolor":"#A2B1C6","ticks":""},"caxis":{"gridcolor":"#DFE8F3","linecolor":"#A2B1C6","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":"","title":{"standoff":15},"zerolinecolor":"#EBF0F8","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":"","title":{"standoff":15},"zerolinecolor":"#EBF0F8","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"white","gridcolor":"#DFE8F3","linecolor":"#EBF0F8","showbackground":true,"ticks":"","zerolinecolor":"#EBF0F8","gridwidth":2},"yaxis":{"backgroundcolor":"white","gridcolor":"#DFE8F3","linecolor":"#EBF0F8","showbackground":true,"ticks":"","zerolinecolor":"#EBF0F8","gridwidth":2},"zaxis":{"backgroundcolor":"white","gridcolor":"#DFE8F3","linecolor":"#EBF0F8","showbackground":true,"ticks":"","zerolinecolor":"#EBF0F8","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"white","subunitcolor":"#C8D4E3","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05}}},"annotations":[{"align":"left","bgcolor":"rgba(255, 255, 255, 0.7)","bordercolor":"black","borderwidth":1,"font":{"size":10},"showarrow":false,"text":"Buenos Aires_H: y = 0.0480x + -35.4192\u003cbr\u003eR\u00b2 = 0.9420","x":0.02,"xref":"paper","y":0.98,"yref":"paper"}],"xaxis":{"title":{"text":"Injection (Row)"},"range":[0.0,35.0],"autorange":false},"yaxis":{"title":{"text":"Raw d2h (\u2030)"},"range":[-97.43888,11.323879999999999],"autorange":false},"legend":{"orientation":"h","yanchor":"top","y":-0.22,"xanchor":"center","x":0.5},"margin":{"l":60,"r":40,"t":60,"b":90},"autosize":true,"title":{"text":"Drift Analysis (Water (2H) vs Row)"},"hovermode":"closest","plot_bgcolor":"white"},                        {"responsive": true}                    )                };            </script>        </div></div>
+    </div>
+    
+
+    
+
+    <div class="section">
+        <h2>Calibration Curve</h2>
+        <div class="plot-container"><div style="height:100%; width:100%;">                            <div id="4cd61ab2-0aa4-4168-a553-6bfb5c9e7029" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("4cd61ab2-0aa4-4168-a553-6bfb5c9e7029")) {                    Plotly.newPlot(                        "4cd61ab2-0aa4-4168-a553-6bfb5c9e7029",                        [{"hovertemplate":"\u003cb\u003e%{text}\u003c\u002fb\u003e\u003cbr\u003eTrue: %{x}\u003cbr\u003eMeasured: %{y:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"line":{"color":"DarkSlateGrey","width":1},"size":10},"mode":"markers","name":"Antartida_H","text":["Antartida_H","Antartida_H","Antartida_H","Antartida_H"],"x":[-94.89,-94.89,-94.89,-94.89],"y":[-90.27415413211324,-90.29417615098656,-90.15972662281956,-90.51174864169289],"type":"scatter"},{"hovertemplate":"\u003cb\u003e%{text}\u003c\u002fb\u003e\u003cbr\u003eTrue: %{x}\u003cbr\u003eMeasured: %{y:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"line":{"color":"DarkSlateGrey","width":1},"size":10},"mode":"markers","name":"Buenos Aires_H","text":["Buenos Aires_H","Buenos Aires_H","Buenos Aires_H","Buenos Aires_H","Buenos Aires_H","Buenos Aires_H"],"x":[-36.92,-36.92,-36.92,-36.92,-36.92,-36.92],"y":[-35.57206605661996,-35.36208807549328,-35.230374320846444,-35.36839633971976,-35.55259450957964,-35.42961652845296],"type":"scatter"},{"hovertemplate":"\u003cb\u003e%{text}\u003c\u002fb\u003e\u003cbr\u003eTrue: %{x}\u003cbr\u003eMeasured: %{y:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"line":{"color":"DarkSlateGrey","width":1},"size":10},"mode":"markers","name":"Mar_H","text":["Mar_H","Mar_H","Mar_H"],"x":[-0.49,-0.49,-0.49],"y":[2.64597798112668,2.42395596225336,2.430361452673721],"type":"scatter"},{"hovertemplate":"\u003cb\u003e%{text}\u003c\u002fb\u003e\u003cbr\u003eTrue: %{x}\u003cbr\u003eMeasured: %{y:.3f}\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"line":{"color":"DarkSlateGrey","width":1},"size":10},"mode":"markers","name":"Mendoza_H","text":["Mendoza_H","Mendoza_H","Mendoza_H","Mendoza_H"],"x":[-72.07,-72.07,-72.07,-72.07],"y":[-68.7391100943666,-67.99813211323992,-68.27668258507292,-68.34070460394624],"type":"scatter"},{"hoverinfo":"skip","line":{"color":"black","width":2},"mode":"lines","name":"Linear Fit","x":[-104.33,-103.18575757575758,-102.04151515151516,-100.89727272727272,-99.7530303030303,-98.60878787878788,-97.46454545454546,-96.32030303030302,-95.1760606060606,-94.03181818181818,-92.88757575757576,-91.74333333333333,-90.5990909090909,-89.45484848484848,-88.31060606060606,-87.16636363636363,-86.0221212121212,-84.87787878787879,-83.73363636363636,-82.58939393939394,-81.44515151515151,-80.30090909090909,-79.15666666666667,-78.01242424242423,-76.86818181818182,-75.72393939393939,-74.57969696969697,-73.43545454545455,-72.29121212121211,-71.14696969696969,-70.00272727272727,-68.85848484848484,-67.71424242424243,-66.57,-65.42575757575757,-64.28151515151515,-63.13727272727272,-61.9930303030303,-60.848787878787874,-59.70454545454545,-58.560303030303025,-57.416060606060604,-56.271818181818176,-55.127575757575755,-53.98333333333333,-52.839090909090906,-51.69484848484848,-50.55060606060606,-49.406363636363636,-48.26212121212121,-47.11787878787879,-45.97363636363636,-44.82939393939394,-43.68515151515151,-42.54090909090909,-41.39666666666666,-40.25242424242424,-39.10818181818182,-37.963939393939384,-36.81969696969696,-35.67545454545454,-34.53121212121212,-33.386969696969686,-32.242727272727265,-31.098484848484844,-29.954242424242423,-28.810000000000002,-27.665757575757567,-26.521515151515146,-25.377272727272725,-24.233030303030304,-23.08878787878787,-21.944545454545448,-20.800303030303027,-19.656060606060606,-18.51181818181817,-17.36757575757575,-16.22333333333333,-15.079090909090908,-13.934848484848473,-12.790606060606052,-11.646363636363631,-10.50212121212121,-9.35787878787879,-8.213636363636354,-7.069393939393933,-5.925151515151512,-4.780909090909091,-3.636666666666656,-2.492424242424235,-1.3481818181818142,-0.2039393939393932,0.940303030303042,2.084545454545463,3.228787878787884,4.373030303030305,5.517272727272726,6.661515151515161,7.805757575757582,8.950000000000001],"y":[-100.02414963781638,-98.90366307811573,-97.78317651841505,-96.66268995871434,-95.54220339901369,-94.421716839313,-93.30123027961233,-92.18074371991165,-91.06025716021097,-89.93977060051029,-88.8192840408096,-87.69879748110893,-86.57831092140825,-85.45782436170757,-84.33733780200689,-83.2168512423062,-82.09636468260553,-80.97587812290485,-79.85539156320417,-78.73490500350351,-77.6144184438028,-76.49393188410212,-75.37344532440147,-74.25295876470076,-73.13247220500011,-72.01198564529943,-70.89149908559875,-69.77101252589807,-68.65052596619739,-67.53003940649671,-66.40955284679603,-65.28906628709535,-64.16857972739467,-63.048093167693985,-61.92760660799332,-60.80712004829264,-59.68663348859196,-58.56614692889128,-57.4456603691906,-56.325173809489925,-55.20468724978924,-54.084200690088565,-52.963714130387885,-51.843227570687205,-50.722741010986525,-49.60225445128585,-48.481767891585164,-47.36128133188449,-46.24079477218382,-45.12030821248313,-43.99982165278246,-42.87933509308178,-41.7588485333811,-40.63836197368042,-39.517875413979745,-38.39738885427906,-37.276902294578385,-36.15641573487771,-35.03592917517702,-33.915442615476344,-32.79495605577567,-31.67446949607499,-30.553982936374304,-29.433496376673627,-28.313009816972954,-27.192523257272278,-26.0720366975716,-24.951550137870914,-23.831063578170237,-22.71057701846956,-21.590090458768888,-20.469603899068197,-19.34911733936752,-18.228630779666847,-17.10814421996617,-15.98765766026548,-14.867171100564807,-13.74668454086413,-12.626197981163456,-11.505711421462765,-10.38522486176209,-9.264738302061415,-8.144251742360739,-7.023765182660064,-5.903278622959375,-4.782792063258699,-3.6623055035580236,-2.541818943857348,-1.4213323841566585,-0.3008458244559833,0.8196407352446922,1.9401272949453676,3.060613854646057,4.181100414346732,5.301586974047408,6.422073533748083,7.542560093448759,8.663046653149447,9.783533212850124,10.904019772550798],"type":"scatter"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"white","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"#C8D4E3","linecolor":"#C8D4E3","minorgridcolor":"#C8D4E3","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"#C8D4E3","linecolor":"#C8D4E3","minorgridcolor":"#C8D4E3","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"white","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"white","polar":{"bgcolor":"white","angularaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":""},"radialaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":""}},"ternary":{"bgcolor":"white","aaxis":{"gridcolor":"#DFE8F3","linecolor":"#A2B1C6","ticks":""},"baxis":{"gridcolor":"#DFE8F3","linecolor":"#A2B1C6","ticks":""},"caxis":{"gridcolor":"#DFE8F3","linecolor":"#A2B1C6","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":"","title":{"standoff":15},"zerolinecolor":"#EBF0F8","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"#EBF0F8","linecolor":"#EBF0F8","ticks":"","title":{"standoff":15},"zerolinecolor":"#EBF0F8","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"white","gridcolor":"#DFE8F3","linecolor":"#EBF0F8","showbackground":true,"ticks":"","zerolinecolor":"#EBF0F8","gridwidth":2},"yaxis":{"backgroundcolor":"white","gridcolor":"#DFE8F3","linecolor":"#EBF0F8","showbackground":true,"ticks":"","zerolinecolor":"#EBF0F8","gridwidth":2},"zaxis":{"backgroundcolor":"white","gridcolor":"#DFE8F3","linecolor":"#EBF0F8","showbackground":true,"ticks":"","zerolinecolor":"#EBF0F8","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"white","subunitcolor":"#C8D4E3","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05}}},"annotations":[{"align":"left","bgcolor":"rgba(255, 255, 255, 0.7)","bordercolor":"black","borderwidth":1,"showarrow":false,"text":"y = 0.9792x + 2.1398\u003cbr\u003eR\u00b2 = 0.9994","x":0.05,"xref":"paper","y":0.95,"yref":"paper"}],"xaxis":{"title":{"text":"Reference Value (True)"},"range":[-102.44200000000001,7.062],"autorange":false},"yaxis":{"title":{"text":"Measured d2h (Drift-Corrected)"},"range":[-97.96436677151846,10.098596110952245],"autorange":false},"legend":{"orientation":"h","yanchor":"top","y":-0.22,"xanchor":"center","x":0.5},"margin":{"l":60,"r":40,"t":60,"b":90},"autosize":true,"title":{"text":"Calibration Curve: Water (2H)"},"hovermode":"closest","plot_bgcolor":"white"},                        {"responsive": true}                    )                };            </script>        </div></div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Processed Results</h2>
+    <div class="table-container">
+        <table class="dataframe table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Sample Identifier</th>
+      <th>corrected_d2h</th>
+      <th>combined_uncertainty</th>
+      <th>count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Antartida_H</td>
+      <td>-94.41</td>
+      <td>1.05</td>
+      <td>4</td>
+    </tr>
+    <tr>
+      <td>Buenos Aires_H</td>
+      <td>-38.36</td>
+      <td>0.72</td>
+      <td>6</td>
+    </tr>
+    <tr>
+      <td>Mar_H</td>
+      <td>0.37</td>
+      <td>1.19</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>Mendoza_H</td>
+      <td>-71.97</td>
+      <td>0.79</td>
+      <td>4</td>
+    </tr>
+    <tr>
+      <td>Rain_Water_01</td>
+      <td>-18.38</td>
+      <td>0.97</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>Rain_Water_02</td>
+      <td>-27.95</td>
+      <td>0.82</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>Rain_Water_03</td>
+      <td>-12.11</td>
+      <td>1.01</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>Rain_Water_04</td>
+      <td>-32.37</td>
+      <td>0.77</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>River_Water_01</td>
+      <td>-45.00</td>
+      <td>0.69</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>River_Water_02</td>
+      <td>-52.04</td>
+      <td>0.70</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>River_Water_03</td>
+      <td>-65.32</td>
+      <td>0.74</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <td>River_Water_04</td>
+      <td>-78.52</td>
+      <td>1.66</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Quality Control (QA/QC) Summary</h2>
+    
+        <p style="color: var(--text-muted); font-style: italic;">No Quality Control standards (trueness monitors) were registered in this analytical run.</p>
+    
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. Dispatch window resize event so Plotly graphs auto-fit their containers properly
+    setTimeout(function() {
+        window.dispatchEvent(new Event('resize'));
+    }, 150);
+
+    // 2. Clickable column header sorting for HTML data tables
+    document.querySelectorAll("table.table").forEach(function(table) {
+        const thead = table.querySelector("thead");
+        const tbody = table.querySelector("tbody") || table;
+        if (!thead) return;
+
+        const headers = thead.querySelectorAll("th");
+        
+        headers.forEach(function(th, columnIndex) {
+            th.addEventListener("click", function() {
+                const currentDir = th.classList.contains("sort-asc") ? "asc" : 
+                                 th.classList.contains("sort-desc") ? "desc" : "none";
+                
+                headers.forEach(h => h.classList.remove("sort-asc", "sort-desc"));
+
+                let newDir = "asc";
+                if (currentDir === "asc") {
+                    newDir = "desc";
+                    th.classList.add("sort-desc");
+                } else {
+                    th.classList.add("sort-asc");
+                }
+
+                const rows = Array.from(tbody.querySelectorAll("tr"));
+                if (rows.length === 0) return;
+
+                rows.sort(function(rowA, rowB) {
+                    const cellA = rowA.children[columnIndex] ? rowA.children[columnIndex].innerText.trim() : "";
+                    const cellB = rowB.children[columnIndex] ? rowB.children[columnIndex].innerText.trim() : "";
+
+                    const numA = parseFloat(cellA.replace(/[^\d.-]/g, ''));
+                    const numB = parseFloat(cellB.replace(/[^\d.-]/g, ''));
+
+                    let comparison = 0;
+                    if (!isNaN(numA) && !isNaN(numB) && cellA === numA.toString() && cellB === numB.toString()) {
+                        comparison = numA - numB;
+                    } else if (!isNaN(numA) && !isNaN(numB) && cellA.match(/^[-+]?\d*\.?\d+$/) && cellB.match(/^[-+]?\d*\.?\d+$/)) {
+                        comparison = numA - numB;
+                    } else {
+                        comparison = cellA.localeCompare(cellB, undefined, { numeric: true, sensitivity: 'base' });
+                    }
+
+                    return newDir === "asc" ? comparison : -comparison;
+                });
+
+                rows.forEach(row => tbody.appendChild(row));
+            });
+        });
+    });
+});
+</script>
+
+
+</body>
+</html>
