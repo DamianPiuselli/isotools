@@ -19,17 +19,17 @@
     {% else %}
         <span class="badge badge-danger">Blank: Off</span>
     {% endif %}
-    
-    {% if iso1.drift_correction_applied %}
-        <span class="badge badge-success">Drift: {{ iso1.drift_monitor_used }}</span>
-    {% else %}
-        <span class="badge badge-danger">Drift: Off</span>
-    {% endif %}
 
     {% if iso1.linearity_correction_applied %}
         <span class="badge badge-success">Linearity: {{ iso1.linearity_substance_used }}</span>
     {% else %}
         <span class="badge badge-danger">Linearity: Off</span>
+    {% endif %}
+
+    {% if iso1.drift_correction_applied %}
+        <span class="badge badge-success">Drift: {{ iso1.drift_monitor_used }}</span>
+    {% else %}
+        <span class="badge badge-danger">Drift: Off</span>
     {% endif %}
 
     <span style="margin: 0 10px; color: #475569;">|</span>
@@ -40,17 +40,17 @@
     {% else %}
         <span class="badge badge-danger">Blank: Off</span>
     {% endif %}
-    
-    {% if iso2.drift_correction_applied %}
-        <span class="badge badge-success">Drift: {{ iso2.drift_monitor_used }}</span>
-    {% else %}
-        <span class="badge badge-danger">Drift: Off</span>
-    {% endif %}
 
     {% if iso2.linearity_correction_applied %}
         <span class="badge badge-success">Linearity: {{ iso2.linearity_substance_used }}</span>
     {% else %}
         <span class="badge badge-danger">Linearity: Off</span>
+    {% endif %}
+
+    {% if iso2.drift_correction_applied %}
+        <span class="badge badge-success">Drift: {{ iso2.drift_monitor_used }}</span>
+    {% else %}
+        <span class="badge badge-danger">Drift: Off</span>
     {% endif %}
 </div>
 {% endblock %}
@@ -71,17 +71,6 @@
             </h3>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Excluded Rows:</strong> {{ iso1.excluded_rows if iso1.excluded_rows else "None" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Blank Correction:</strong> {{ "Applied (" + iso1.blank_info.identifier + ")" if iso1.blank_correction_applied else "Not Applied" }}</p>
-            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> {{ "Applied (" + iso1.drift_monitor_used + ")" if iso1.drift_correction_applied else "Not Applied" }}</p>
-            {% if iso1.drift_correction_applied and iso1.drift_slope is not none %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.4f"|format(iso1.drift_slope) }} ‰/row</p>
-            {% if iso1.drift_ci95 is not none %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.4f"|format(iso1.drift_slope - iso1.drift_ci95) }}, {{ "%.4f"|format(iso1.drift_slope + iso1.drift_ci95) }}]</p>
-            {% endif %}
-            {% if iso1.drift_p_value is not none %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso1.drift_p_value) if iso1.drift_p_value >= 0.0001 else "< 0.0001" }}</p>
-            {% endif %}
-            {% endif %}
-
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (" + iso1.linearity_substance_used + ")" if iso1.linearity_correction_applied else "Not Applied" }}</p>
             {% if iso1.linearity_correction_applied and iso1.linearity_slope is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.5f"|format(iso1.linearity_slope) }} ‰/unit</p>
@@ -93,6 +82,17 @@
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso1.linearity_p_value) if iso1.linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(iso1.linearity_area_ref) }}</p>
+            {% endif %}
+
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> {{ "Applied (" + iso1.drift_monitor_used + ")" if iso1.drift_correction_applied else "Not Applied" }}</p>
+            {% if iso1.drift_correction_applied and iso1.drift_slope is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.4f"|format(iso1.drift_slope) }} ‰/row</p>
+            {% if iso1.drift_ci95 is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.4f"|format(iso1.drift_slope - iso1.drift_ci95) }}, {{ "%.4f"|format(iso1.drift_slope + iso1.drift_ci95) }}]</p>
+            {% endif %}
+            {% if iso1.drift_p_value is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso1.drift_p_value) if iso1.drift_p_value >= 0.0001 else "< 0.0001" }}</p>
+            {% endif %}
             {% endif %}
 
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Strategy:</strong> {{ iso1.strategy_name }} (Anchors: {{ iso1.anchors }})</p>
@@ -110,17 +110,6 @@
             </h3>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Excluded Rows:</strong> {{ iso2.excluded_rows if iso2.excluded_rows else "None" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Blank Correction:</strong> {{ "Applied (" + iso2.blank_info.identifier + ")" if iso2.blank_correction_applied else "Not Applied" }}</p>
-            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> {{ "Applied (" + iso2.drift_monitor_used + ")" if iso2.drift_correction_applied else "Not Applied" }}</p>
-            {% if iso2.drift_correction_applied and iso2.drift_slope is not none %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.4f"|format(iso2.drift_slope) }} ‰/row</p>
-            {% if iso2.drift_ci95 is not none %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.4f"|format(iso2.drift_slope - iso2.drift_ci95) }}, {{ "%.4f"|format(iso2.drift_slope + iso2.drift_ci95) }}]</p>
-            {% endif %}
-            {% if iso2.drift_p_value is not none %}
-            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso2.drift_p_value) if iso2.drift_p_value >= 0.0001 else "< 0.0001" }}</p>
-            {% endif %}
-            {% endif %}
-
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (" + iso2.linearity_substance_used + ")" if iso2.linearity_correction_applied else "Not Applied" }}</p>
             {% if iso2.linearity_correction_applied and iso2.linearity_slope is not none %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.5f"|format(iso2.linearity_slope) }} ‰/unit</p>
@@ -132,6 +121,17 @@
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso2.linearity_p_value) if iso2.linearity_p_value >= 0.0001 else "< 0.0001" }}</p>
             {% endif %}
             <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Ref Area (A<sub>ref</sub>):</strong> {{ "%.2f"|format(iso2.linearity_area_ref) }}</p>
+            {% endif %}
+
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Drift Correction:</strong> {{ "Applied (" + iso2.drift_monitor_used + ")" if iso2.drift_correction_applied else "Not Applied" }}</p>
+            {% if iso2.drift_correction_applied and iso2.drift_slope is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>Slope:</strong> {{ "%.4f"|format(iso2.drift_slope) }} ‰/row</p>
+            {% if iso2.drift_ci95 is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>95% CI:</strong> [{{ "%.4f"|format(iso2.drift_slope - iso2.drift_ci95) }}, {{ "%.4f"|format(iso2.drift_slope + iso2.drift_ci95) }}]</p>
+            {% endif %}
+            {% if iso2.drift_p_value is not none %}
+            <p style="margin: 2px 0 2px 10px; font-size: 0.82rem; color: #475569;">• <strong>p-value:</strong> {{ "%.4f"|format(iso2.drift_p_value) if iso2.drift_p_value >= 0.0001 else "< 0.0001" }}</p>
+            {% endif %}
             {% endif %}
 
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Strategy:</strong> {{ iso2.strategy_name }} (Anchors: {{ iso2.anchors }})</p>

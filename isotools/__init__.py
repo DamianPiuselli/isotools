@@ -20,8 +20,8 @@ from .standards import (
     USGS32, USGS34, USGS35,
     MAR_H, BUENOS_AIRES_H, MENDOZA_H, ANTARTIDA_H,
     MAR_O, BUENOS_AIRES_O, MENDOZA_O, ANTARTIDA_O,
-    NIST8541,
-    get_standard
+    NIST8541, SRM1649A, SRM1649a,
+    get_standard, register_standard,
 )
 
 # 5. Strategies
@@ -52,7 +52,10 @@ __all__ = [
     "MENDOZA_O",
     "ANTARTIDA_O",
     "NIST8541",
+    "SRM1649A",
+    "SRM1649a",
     "get_standard",
+    "register_standard",
     "CalibrationStrategy",
     "SinglePointOffset",
     "TwoPointLinear",
@@ -60,4 +63,3 @@ __all__ = [
     "generate_html_report",
     "generate_dual_isotope_html_report",
 ]
-

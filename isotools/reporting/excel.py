@@ -15,6 +15,10 @@ def export_batch_to_excel(batch, filepath: str):
     if batch.summary is None:
         raise RuntimeError("Run .process() before exporting the report.")
 
+    drift_applied = batch.drift_correction_applied
+    lin_applied = batch.linearity_correction_applied
+    blank_applied = batch.blank_correction_applied
+
     with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
         # 1. Results Sheet
         batch.report.to_excel(writer, sheet_name="Results")
@@ -33,18 +37,20 @@ def export_batch_to_excel(batch, filepath: str):
             "Anchors": ", ".join(batch.anchors.keys()),
             "Controls": ", ".join(batch.controls.keys()),
             "Drift Monitors": ", ".join(batch.drift_monitors.keys()),
-            "Drift Correction Applied": batch.drift_correction_applied,
-            "Drift Monitor Used": batch.drift_monitor_used if batch.drift_correction_applied else "None",
-            "Drift Slope": getattr(batch, "drift_slope", "None") if batch.drift_correction_applied else "None",
-            "Drift Slope 95% CI": getattr(batch, "drift_ci95", "None") if batch.drift_correction_applied else "None",
-            "Linearity Correction Applied": batch.linearity_correction_applied,
-            "Linearity Slope": batch.linearity_slope if batch.linearity_correction_applied else "None",
-            "Linearity Slope 95% CI": getattr(batch, "linearity_ci95", "None") if batch.linearity_correction_applied else "None",
-            "Linearity Slope Source": getattr(batch, "linearity_source", "None") if batch.linearity_correction_applied else "None",
-            "Linearity Reference Substance": batch.linearity_substance_used if batch.linearity_correction_applied else "None",
-            "Linearity Ref Area": batch.linearity_area_ref if batch.linearity_correction_applied else "None",
-            "Blank Correction Applied": batch.blank_correction_applied,
-            "Blank Identifier": batch.blank_info["identifier"] if batch.blank_correction_applied and batch.blank_info else "None",
+            "Blank Correction Applied": blank_applied,
+            "Blank Identifier": (
+                batch.blank_info["identifier"] if blank_applied and batch.blank_info else "None"
+            ),
+            "Linearity Correction Applied": lin_applied,
+            "Linearity Slope": batch.linearity_slope if lin_applied else "None",
+            "Linearity Slope 95% CI": getattr(batch, "linearity_ci95", "None") if lin_applied else "None",
+            "Linearity Slope Source": getattr(batch, "linearity_source", "None") if lin_applied else "None",
+            "Linearity Reference Substance": batch.linearity_substance_used if lin_applied else "None",
+            "Linearity Ref Area": batch.linearity_area_ref if lin_applied else "None",
+            "Drift Correction Applied": drift_applied,
+            "Drift Monitor Used": batch.drift_monitor_used if drift_applied else "None",
+            "Drift Slope": getattr(batch, "drift_slope", "None") if drift_applied else "None",
+            "Drift Slope 95% CI": getattr(batch, "drift_ci95", "None") if drift_applied else "None",
         }
 
         if batch.strategy:

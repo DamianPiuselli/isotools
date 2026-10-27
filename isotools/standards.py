@@ -100,13 +100,15 @@ NIST8541 = ReferenceMaterial(
     target_column="d13c",
 )
 
-SRM1649a = ReferenceMaterial(
+SRM1649A = ReferenceMaterial(
     name="1649a",
     d_true=-25.60,
     u_true=0.20,
     aliases=["NIST1649a", "NIST-1649a", "SRM 1649a", "SRM-1649a", "1649A", "Urban Dust"],
     target_column="d13c",
 )
+# Alias for backward compatibility
+SRM1649a = SRM1649A  # pylint: disable=invalid-name
 
 # --- Registry & Lookup ---
 # This list defines what the library "knows" by default.
@@ -114,10 +116,28 @@ DEFAULT_STANDARDS = [
     USGS32, USGS34, USGS35,
     MAR_H, BUENOS_AIRES_H, MENDOZA_H, ANTARTIDA_H,
     MAR_O, BUENOS_AIRES_O, MENDOZA_O, ANTARTIDA_O,
-    NIST8541, SRM1649a,
+    NIST8541, SRM1649A,
 ]
 
 
+def register_standard(standard: ReferenceMaterial) -> None:
+    """
+    Registers a custom ReferenceMaterial in the default standards registry.
+    If a standard with the same canonical name and target_column already exists,
+    it is replaced; otherwise it is prepended so custom standards take priority.
+    """
+    if not isinstance(standard, ReferenceMaterial):
+        raise TypeError("Expected a ReferenceMaterial instance.")
+
+    for i, existing in enumerate(DEFAULT_STANDARDS):
+        if (
+            existing.name.lower() == standard.name.lower()
+            and existing.target_column == standard.target_column
+        ):
+            DEFAULT_STANDARDS[i] = standard
+            return
+
+    DEFAULT_STANDARDS.insert(0, standard)
 
 
 def get_standard(

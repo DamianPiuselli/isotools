@@ -13,12 +13,11 @@ Features:
   3. Row 30: Response factor / area anomaly in 2H (double drop / weighing error)
 """
 
-import os
 import numpy as np
 import pandas as pd
 
 
-def generate_synthetic_data(output_path: str = "synthetic_water_sequence.xlsx"):
+def generate_synthetic_data(output_path: str = "synthetic_water_sequence.xlsx"):  # pylint: disable=too-many-locals
     np.random.seed(42)  # For reproducible synthetic data
 
     # 1. Define sequence sample layout

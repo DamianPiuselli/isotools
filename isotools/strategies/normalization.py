@@ -303,4 +303,3 @@ class SinglePointOffset(CalibrationStrategy):
         summary_df["combined_uncertainty"] = results
         summary_df[f"corrected_{target_col}"] = summary_df["mean"] - self.offset
         return summary_df
-

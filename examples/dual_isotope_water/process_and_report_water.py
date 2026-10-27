@@ -16,7 +16,7 @@ from generate_synthetic_water_data import generate_synthetic_data
 from isotools import WATER_H, WATER_O, Batch, MultiPointLinear, generate_dual_isotope_html_report
 
 
-def main():
+def main():  # pylint: disable=too-many-statements
     script_dir = os.path.dirname(os.path.abspath(__file__))
     excel_path = os.path.join(script_dir, "synthetic_water_sequence.xlsx")
 

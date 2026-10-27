@@ -2,31 +2,31 @@
 
 ## Phase 1: Core Robustness & Data Integrity
 - [x] **Task 1: Non-Destructive Corrections**
-    - Refactor `Batch` to store corrections in a separate column instead of overwriting raw data.
-    - Update `apply_drift_correction` and `process` to use this new column.
+    - Refactor `Batch` to store corrections in separate columns (`d_blank_corrected`, `d_linearity_corrected`, `d_drift_corrected`, `working_value`) instead of overwriting raw data.
+    - Enforce the canonical CF-IRMS order of operations (`Exclusions -> Blank -> Linearity -> Drift -> Scale Normalization`) deterministically via `Batch._recompute_working_values()`.
 - [x] **Task 2: Centralize Name Resolution**
-    - Implement `Batch._get_canonical_name(raw_name)` to unify standard identification across `check_drift`, `plot_drift`, `process`, and `plot_calibration`.
+    - Implement `Batch.get_canonical_name(raw_name, registry)` and `register_standard()` to unify standard identification across drift, linearity, calibration, and QA/QC.
 - [x] **Task 3: Ingestion Validation**
-    - Enhance `IsodatReader` to validate that all mapped columns exist in the raw file.
-    - Provide clear error messages/warnings for missing data.
+    - Enhance `IsodatReader` to validate that all mapped essential columns exist in the raw file, deduplicate target column aliases, and flag missing sample peaks (autosampler drop failures).
 
 ## Phase 2: Usability & Reporting
 - [x] **Task 4: Standardized Export**
-    - Implement `Batch.save_report(filepath)` to export results and QAQC to a multi-sheet Excel file.
-    - Added explicit drift correction status (applied/not applied and monitor used) to the Parameters sheet for traceability.
+    - Implement `Batch.save_report(filepath)` to export `Results`, `QAQC`, and `Parameters` sheets to a multi-sheet Excel file with full correction metadata.
 - [x] **Task 5: Improved Grouping**
-    - Ensure control standards are aggregated by canonical name in the final report, even if raw names differ.
+    - Ensure anchor and control standards are aggregated by canonical name in the final report, even if raw names differ.
 
 ## Phase 3: Advanced Features
 - [ ] **Task 6: Metadata Integration**
-    - Add ability to join external sample metadata (weights, site info) to the Batch.
-- [ ] **Task 7: Non-Linear Models**
+    - Add ability to join external sample metadata (weights, site info) to the `Batch`.
+- [ ] **Task 7: Non-Linear Calibration Models**
     - Implement quadratic/polynomial calibration strategies.
-- [ ] **Task 8: Analytical Corrections (Linearity & Memory)**
-    - Implement methods to correct for gas amount dependencies and sample-to-sample carryover.
-- [ ] **Task 9: Long-term QA/QC Tracking**
-    - Create a module to track and visualize control standards across multiple runs over time (e.g., Shewhart charts).
-- [x] **Task 10: Interactive HTML Reports**
-    - Add functionality to generate standalone interactive reports with plots (Plotly/Bokeh) for easier data review.
-- [ ] **Task 11: Detailed Uncertainty Budget**
-    - Provide a breakdown of uncertainty sources (measurement vs standard vs fit) in the report to help optimize methods.
+- [x] **Task 8: Analytical Corrections (Blank & Linearity)**
+    - Implement mass-balance blank correction (`apply_blank_correction`) and signal-intensity linearity evaluation/correction (`check_linearity`, `apply_linearity_correction`).
+- [ ] **Task 9: Memory / Carryover Correction**
+    - Implement sample-to-sample memory correction for water isotope sequences.
+- [ ] **Task 10: Long-term QA/QC Tracking**
+    - Create a module to track and visualize control standards across multiple runs over time (e.g., Shewhart control charts).
+- [x] **Task 11: Interactive HTML Reports (Single & Dual Isotope)**
+    - Generate standalone interactive ISO 17025 HTML reports with Plotly graphs, 5-stage processing lineage audits, and dual-isotope meteoric water line analysis.
+- [ ] **Task 12: Detailed Uncertainty Budget Breakdown**
+    - Provide a percentage breakdown of uncertainty sources (measurement vs standard vs fit) in the report to help optimize analytical methods.

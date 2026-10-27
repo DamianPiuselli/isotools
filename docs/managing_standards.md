@@ -1,44 +1,51 @@
 # Managing Standards
 
-One of the most tedious parts of IRMS data processing is matching machine-specific sample names (e.g., `st-USGS40-A`) to their certified values. `isotools` automates this through a standard registry and aliasing system.
+One of the most tedious parts of IRMS data processing is matching raw sample identifiers from the mass spectrometer sequence (e.g., `KN032`, `BSAS`, `8541`) to their certified reference values. `isotools` automates this through a built-in standards registry and case-insensitive alias system.
 
-## The Standard Registry
+## Built-in Standards Registry
 
-`isotools` comes pre-loaded with common international standards from the USGS and IAEA. Each standard is defined with:
--   **Name:** The canonical name (e.g., `USGS40`).
--   **Value:** Its certified isotopic value.
--   **Uncertainty:** Its certified 1-sigma uncertainty.
--   **Aliases:** Common variations of the name used in different labs.
+`isotools` comes pre-loaded with reference materials in `isotools.standards`:
+
+-   **Nitrogen ($\delta^{15}\text{N}$, `target_column="d15n"`):** `USGS32`, `USGS34`, `USGS35`
+-   **Water Hydrogen ($\delta^2\text{H}$, `target_column="d2h"`):** `MAR_H` (`Mar_H`), `BUENOS_AIRES_H` (`Buenos Aires_H`), `MENDOZA_H` (`Mendoza_H`), `ANTARTIDA_H` (`Antartida_H`)
+-   **Water Oxygen ($\delta^{18}\text{O}$, `target_column="d18o"`):** `MAR_O` (`Mar_O`), `BUENOS_AIRES_O` (`Buenos Aires_O`), `MENDOZA_O` (`Mendoza_O`), `ANTARTIDA_O` (`Antartida_O`)
+-   **Carbon ($\delta^{13}\text{C}$, `target_column="d13c"`):** `NIST8541`, `SRM1649A` (`1649a`)
+
+Each `ReferenceMaterial` is defined with:
+-   `name`: The canonical identifier (e.g., `"USGS32"`).
+-   `d_true`: Certified delta value ($\text{‰}$).
+-   `u_true`: Certified 1-$\sigma$ standard uncertainty ($\text{‰}$).
+-   `aliases`: List of alternative names recognized in raw sequence files.
+-   `target_column`: Associated isotope target column (e.g., `"d15n"`, `"d2h"`, `"d18o"`, `"d13c"`), allowing `get_standard()` to disambiguate standards that share an alias across different isotopes (such as `"Mar"` or `"Buenos Aires"` for $\delta^2\text{H}$ vs $\delta^{18}\text{O}$).
 
 ## Aliasing and Matching
 
-When you call `batch.set_anchors(["USGS40", "USGS41"])`, the library uses a fuzzy matching system. If your Excel file has a sample named `st_usgs_40`, the library will:
-1.  Check the alias list for `USGS40`.
-2.  Clean the name (lower-case, remove special characters).
-3.  Automatically link the raw machine data to the correct certified value.
+When you register standards on a `Batch` (e.g., `batch.set_anchors(["USGS32", "USGS34"])`), `isotools` resolves each name against the registry for the batch's `config.target_column`. During processing, `ReferenceMaterial.matches()` performs a case-insensitive, whitespace-trimmed lookup against the standard's canonical `name` and all of its `aliases`, grouping all matching rows under the canonical name.
 
-## Roles of Standards
+## Roles of Standards in a Batch
 
-In `isotools`, a standard can play three distinct roles in a batch:
+A reference material can play three distinct roles in a `Batch`:
 
-1.  **Anchors (`set_anchors`):** These define the calibration curve. They must cover the range of your samples.
-2.  **Controls (`set_controls`):** These are treated as unknowns during processing. After calibration, the library compares their measured value against their certified value to check for **trueness**.
-3.  **Drift Monitors (`set_drift_monitors`):** These are replicates of the same material spaced throughout the run. The library uses them to check if the instrument response changed over time.
+1.  **Anchors (`batch.set_anchors`):** Used to fit the calibration curve (`SinglePointOffset`, `TwoPointLinear`, or `MultiPointLinear`).
+2.  **Controls (`batch.set_controls`):** Treated as unknowns during calibration. Afterward, `batch.qaqc` compares their calibrated mean against `d_true` to evaluate analytical **bias (trueness)** and check whether $|\text{Bias}| < 2 \times u_c$.
+3.  **Drift Monitors (`batch.set_drift_monitors`):** Replicates of a homogeneous standard spaced throughout the sequence used by `batch.check_drift()` and `batch.apply_drift_correction()` to quantify and remove temporal instrument drift.
 
 ## Adding Custom Standards
 
-You can easily add your own internal lab standards to the registry:
+You can register your own internal laboratory standards using `ReferenceMaterial` and `register_standard()`:
 
 ```python
-from isotools.standards import register_standard
-from isotools.models import ReferenceMaterial
+from isotools import ReferenceMaterial, register_standard
 
 my_std = ReferenceMaterial(
     name="Lab-Water-1",
-    true_value=-10.5,
-    uncertainty=0.1,
-    aliases=["lab1", "water1"]
+    d_true=-10.5,
+    u_true=0.1,
+    aliases=["lab1", "water1"],
+    target_column="d18o",
 )
 
 register_standard(my_std)
 ```
+
+Once registered, `"Lab-Water-1"` (and its aliases `"lab1"`, `"water1"`) can be passed directly to `batch.set_anchors()`, `batch.set_controls()`, or `batch.set_drift_monitors()`.

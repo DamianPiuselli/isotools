@@ -52,27 +52,35 @@ class IsodatReader:
         df.columns = df.columns.str.replace(r"\s+", " ", regex=True).str.strip()
 
         # 3. Validate and Rename Columns Case-Insensitively
-        # 3. Validate and Rename Columns Case-Insensitively
         # Essential internal names are required for logic if defined in the config mapping
         all_essentials = ["sample_name", "row", self.config.target_column]
         if "peak_nr" in self.config.column_mapping.values():
             all_essentials.append("peak_nr")
-        essential_internal_names = [name for name in all_essentials if name in self.config.column_mapping.values()]
+        essential_internal_names = [
+            name for name in all_essentials if name in self.config.column_mapping.values()
+        ]
 
         # Build normalized lookups for existing columns: normalized_header -> original_header
         df_cols_norm = {col.lower().replace(" ", ""): col for col in df.columns}
 
         # Build dynamic mapping from original header in df to internal name
+        # Ensure each internal_name is mapped at most once (first match wins)
         dynamic_mapping = {}
+        mapped_internal_names = set()
         for raw_col, internal_name in self.config.column_mapping.items():
+            if internal_name in mapped_internal_names:
+                continue
             raw_col_norm = raw_col.lower().replace(" ", "")
             if raw_col_norm in df_cols_norm:
                 actual_col = df_cols_norm[raw_col_norm]
                 dynamic_mapping[actual_col] = internal_name
+                mapped_internal_names.add(internal_name)
 
         # Check if all essential internal names were satisfied by mapped columns
         found_internal_names = set(dynamic_mapping.values())
-        missing_essential = [name for name in essential_internal_names if name not in found_internal_names]
+        missing_essential = [
+            name for name in essential_internal_names if name not in found_internal_names
+        ]
 
         if missing_essential:
             raise ValueError(
@@ -87,8 +95,7 @@ class IsodatReader:
         if "sample_name" in df.columns:
             df["sample_name"] = df["sample_name"].astype(str).str.strip()
 
-        # Track raw row metadata before filtering
-        raw_rows_info = {}
+        # 6. Track raw row metadata before filtering
         missing_sample_info = {}
         if "row" in df.columns:
             all_raw_rows = set(df["row"].dropna().unique())
@@ -97,7 +104,11 @@ class IsodatReader:
             missing_rows = sorted(list(all_raw_rows - filtered_rows))
             for r in missing_rows:
                 sub = df[df["row"] == r]
-                name = sub["sample_name"].iloc[0] if "sample_name" in sub.columns and not sub.empty else f"Row {r}"
+                name = (
+                    sub["sample_name"].iloc[0]
+                    if "sample_name" in sub.columns and not sub.empty
+                    else f"Row {r}"
+                )
                 missing_sample_info[r] = name
             df = filtered_df
             df.attrs["missing_sample_rows_info"] = missing_sample_info
@@ -111,4 +122,3 @@ class IsodatReader:
             df = df[~df["row"].isin(exclude_rows)]
 
         return df
-

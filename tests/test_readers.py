@@ -1,12 +1,14 @@
-# tests/test_readers.py
+"""
+Unit tests for IsodatReader header cleaning, validation, and duplicate alias safety.
+"""
 from unittest.mock import patch
 import pandas as pd
 import pytest
+
 from isotools.utils.readers import IsodatReader
-from isotools.config import SystemConfig
+from isotools.config import SystemConfig, WATER_H
 
 # Allow pytest fixtures to intentionally shadow outer-scope names (e.g. `mock_config`).
-# This keeps pytest's fixture injection and silences linters about redefined outer names.
 # pylint: disable=redefined-outer-name
 
 
@@ -17,7 +19,6 @@ def mock_config():
         name="TestSys",
         target_column="val",
         column_mapping={"Raw Name": "sample_name", "Raw Val": "val", "Row": "row"},
-        # filter_func: Keep rows where val > 0
         filter_func=lambda df: df[df["val"] > 0].copy(),
     )
 
@@ -25,9 +26,8 @@ def mock_config():
 @patch("pandas.read_excel")
 def test_reader_renaming_and_cleaning(mock_read_excel, mock_config):
     """Test standard column renaming and string cleanup."""
-    # Setup raw data with messy headers and spaces
     raw_data = {
-        "Raw  Name": [" Std A ", "Sample B"],  # Note double space in key
+        "Raw  Name": [" Std A ", "Sample B"],
         "Raw Val": [10.0, -5.0],
         "Row": [1, 2],
     }
@@ -36,14 +36,8 @@ def test_reader_renaming_and_cleaning(mock_read_excel, mock_config):
     reader = IsodatReader(mock_config)
     df = reader.read("dummy.xls")
 
-    # 1. Check Renaming (Raw Name -> sample_name)
     assert "sample_name" in df.columns
-
-    # 2. Check String Cleanup (" Std A " -> "Std A")
     assert df.iloc[0]["sample_name"] == "Std A"
-
-    # 3. Check System Filtering (val > 0)
-    # Row 2 (val=-5.0) should be dropped by filter_func
     assert len(df) == 1
     assert df.iloc[0]["val"] == 10.0
 
@@ -55,7 +49,6 @@ def test_manual_row_exclusion(mock_read_excel, mock_config):
     mock_read_excel.return_value = pd.DataFrame(raw_data)
 
     reader = IsodatReader(mock_config)
-    # Exclude row 2
     df = reader.read("dummy.xls", exclude_rows=[2])
 
     assert len(df) == 2
@@ -65,7 +58,6 @@ def test_manual_row_exclusion(mock_read_excel, mock_config):
 @patch("pandas.read_excel")
 def test_reader_validation_fails_on_missing_columns(mock_read_excel, mock_config):
     """Test that reading fails if mapped columns are missing."""
-    # Mock data missing "Raw Name"
     raw_data = {"Raw Val": [10], "Row": [1]}
     mock_read_excel.return_value = pd.DataFrame(raw_data)
 
@@ -92,3 +84,23 @@ def test_reader_case_and_space_insensitivity(mock_read_excel, mock_config):
     assert "row" in df.columns
     assert df.iloc[0]["sample_name"] == "Std A"
     assert df.iloc[0]["val"] == 10.0
+
+
+@patch("pandas.read_excel")
+def test_reader_first_match_deduplication(mock_read_excel):
+    """Verify that if both 'd 3H2/2H2' and 'd 2H/1H' exist, only the first is mapped to 'd2h'."""
+    raw_data = {
+        "Row": [1, 2],
+        "Identifier 1": ["Mar_H", "S1"],
+        "Peak Nr": [3, 3],
+        "d 3H2/2H2": [-0.5, -40.0],
+        "d 2H/1H": [-999.0, -999.0],
+    }
+    mock_read_excel.return_value = pd.DataFrame(raw_data)
+
+    reader = IsodatReader(WATER_H)
+    df = reader.read("dummy_water.xls")
+
+    assert list(df.columns).count("d2h") == 1
+    assert isinstance(df["d2h"], pd.Series)
+    assert df.iloc[0]["d2h"] == pytest.approx(-0.5)

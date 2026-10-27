@@ -207,8 +207,10 @@ marimo/_lsp/
 __marimo__/
 
 # Local / lab data & generated report outputs (untracked)
+.DS_Store
 local_data/
 data/
 examples/**/*.html
 examples/**/*.xlsx
+
 

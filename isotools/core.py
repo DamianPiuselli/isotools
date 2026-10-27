@@ -1,13 +1,13 @@
 """
 Core processing logic for IRMS data batches.
 """
+# pylint: disable=too-many-lines
 import os
 import re
 import datetime
 from datetime import datetime as dt
 import warnings
 from typing import List, Dict, Optional
-
 
 import numpy as np
 import pandas as pd
@@ -24,11 +24,13 @@ from .reporting.html import generate_html_report
 from .reporting.excel import export_batch_to_excel
 
 
-class Batch:
+class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """
     The central object representing a single IRMS run/sequence.
 
     Manages the lifecycle of data from Raw -> Cleaned -> Calibrated -> Reported.
+    Enforces the canonical CF-IRMS order of operations:
+        0. Exclusions -> 1. Blank Correction -> 2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization
     """
 
     def __init__(self, filepath: str, config: SystemConfig, sheet_name: int | str = 0):
@@ -56,22 +58,41 @@ class Batch:
         self.anchors: Dict[str, ReferenceMaterial] = {}  # Used for calibration
         self.controls: Dict[str, ReferenceMaterial] = {}  # Used for QC/Trueness
         self.drift_monitors: Dict[str, ReferenceMaterial] = {}  # Used for Drift Check
-        self.drift_correction_applied = False
-        self.drift_monitor_used: Optional[str] = None
-        self.blank_correction_applied = False
+
+        # Blank correction state
+        self.blank_correction_applied: bool = False
         self.blank_info: Optional[Dict] = None
+        self._blank_params: Optional[Dict] = None
+
+        # Linearity correction state
         self.linearity_correction_applied: bool = False
         self.linearity_slope: Optional[float] = None
+        self.linearity_ci95: Optional[float] = None
+        self.linearity_p_value: Optional[float] = None
+        self.linearity_r2: Optional[float] = None
         self.linearity_substance_used: Optional[str] = None
         self.linearity_area_ref: Optional[float] = None
+        self.linearity_is_direct: bool = False
+        self.linearity_source: Optional[str] = None
         self.linearity_info: Optional[Dict] = None
+        self._linearity_params: Optional[Dict] = None
+
+        # Drift correction state
+        self.drift_correction_applied: bool = False
+        self.drift_monitor_used: Optional[str] = None
+        self.drift_slope: Optional[float] = None
+        self.drift_ci95: Optional[float] = None
+        self.drift_p_value: Optional[float] = None
+        self.drift_r2: Optional[float] = None
+        self.drift_info: Optional[Dict] = None
+        self._drift_params: Optional[Dict] = None
+
+        # Processing & diagnostics state
         self.use_method_precision: bool = False
         self.summary: Optional[pd.DataFrame] = None
         self.strategy: Optional[CalibrationStrategy] = None
         self._alerts: pd.DataFrame = pd.DataFrame(columns=["row", "sample_name", "reason"])
         self._acquisition_date: Optional[str] = None
-
-
 
         # 3. Initial Diagnostics
         self.detect_outliers()
@@ -81,7 +102,6 @@ class Batch:
                 f"Detected {len(self._alerts)} suspicious data points on initial load. "
                 "Check the .alerts property for details."
             )
-
 
     @property
     def filename(self) -> str:
@@ -100,7 +120,7 @@ class Batch:
         if self.filepath:
             fname = os.path.basename(self.filepath)
             # Try matching date patterns (DDMMYY, DDMMYYYY, YYYY-MM-DD, YYYYMMDD)
-            m_dmy = re.search(r'(\d{2})(\d{2})(\d{2,4})', fname)
+            m_dmy = re.search(r"(\d{2})(\d{2})(\d{2,4})", fname)
             if m_dmy:
                 d, m, y = m_dmy.groups()
                 if len(y) == 2:
@@ -108,27 +128,25 @@ class Batch:
                 try:
                     d_obj = datetime.date(int(y), int(m), int(d))
                     return d_obj.strftime("%Y-%m-%d")
-                except Exception:
+                except ValueError:
                     pass
 
-            m_ymd = re.search(r'(\d{4})[-_]?(\d{2})[-_]?(\d{2})', fname)
+            m_ymd = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", fname)
             if m_ymd:
                 y, m, d = m_ymd.groups()
                 try:
                     d_obj = datetime.date(int(y), int(m), int(d))
                     return d_obj.strftime("%Y-%m-%d")
-                except Exception:
+                except ValueError:
                     pass
 
             try:
                 mtime = os.path.getmtime(self.filepath)
                 return datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-            except Exception:
+            except OSError:
                 pass
 
         return dt.now().strftime("%Y-%m-%d")
-
-
 
     @acquisition_date.setter
     def acquisition_date(self, value: str):
@@ -136,7 +154,6 @@ class Batch:
 
     @property
     def data_view(self) -> pd.DataFrame:
-
         """Returns the full raw data for preliminary analysis and inspection."""
         return self.replicates
 
@@ -145,15 +162,16 @@ class Batch:
         """Returns a table of flagged outliers and problematic data."""
         return self._alerts
 
-    def detect_outliers(self):
+    def detect_outliers(self):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """
         Runs automatic diagnostics to identify suspicious data points.
 
         1. Missing Sample Peak / Autosampler Drop Failure Check.
         2. Double Drop / Abnormal Response Factor Check (Area/Amount).
         3. Range Check: Outside expected environmental values (on normalized data).
-        4. Precision Check: Sample SD > 3x method precision (on raw/drift-corrected data).
+        4. Precision Check: Sample SD > 3x method precision (on working data).
         5. Amplitude Check: Amplitude < 50% or > 200% of run median.
+        6. Single Replicate Check (n=1): Fallback to instrumental method precision.
         """
         alerts = []
         valid = self.replicates[~self.replicates["excluded"]].copy()
@@ -166,7 +184,10 @@ class Batch:
                 {
                     "row": r,
                     "sample_name": name,
-                    "reason": f"Missing Sample Peak: No sample peak detected for Row {r} ({name}). Suspected autosampler drop failure.",
+                    "reason": (
+                        f"Missing Sample Peak: No sample peak detected for Row {r} ({name}). "
+                        "Suspected autosampler drop failure."
+                    ),
                 }
             )
 
@@ -177,22 +198,11 @@ class Batch:
             return
 
         # --- 0b. Double Drop / Response Anomaly Check ---
-        # Find area column
-        possible_areas = []
-        if self.config.amplitude_column:
-            suffix = self.config.amplitude_column.split("_")[-1]
-            possible_areas.append(f"area_{suffix}")
-        possible_areas.extend(["area_44", "area_28", "area_2", "area_all"])
-
-        area_col = None
-        for col in possible_areas:
-            if col in valid.columns:
-                area_col = col
-                break
-
+        area_col = self._find_preferred_area_column(valid)
         if "amount" in valid.columns and area_col:
-            # Filter rows with valid positive amount and area
-            weighed = valid[(valid["amount"].notna()) & (valid["amount"] > 0) & (valid[area_col].notna())].copy()
+            weighed = valid[
+                valid["amount"].notna() & (valid["amount"] > 0) & valid[area_col].notna()
+            ].copy()
             if not weighed.empty:
                 weighed["response"] = weighed[area_col] / weighed["amount"]
                 median_resp = weighed["response"].median()
@@ -202,16 +212,15 @@ class Batch:
                     for _, row in high_resp.iterrows():
                         r_num = row.get("row", -1)
                         resp_val = row["response"]
-                        # Check if preceded by a missing sample peak row (e.g. row - 1 or row - 2)
-                        if (r_num - 1) in missing_rows_list or (r_num - 2) in missing_rows_list:
+                        if r_num - 1 in missing_rows_list or r_num - 2 in missing_rows_list:
                             reason = (
                                 f"Double Drop Suspected: Unusually high response factor "
                                 f"({resp_val:.0f} vs median {median_resp:.0f}) following missing sample peak."
                             )
                         else:
                             reason = (
-                                f"Abnormal Area/Amount Ratio: Response factor "
-                                f"({resp_val:.0f}) > 1.5x run median ({median_resp:.0f}). Suspected double drop or weighing error."
+                                f"Abnormal Area/Amount Ratio: Response factor ({resp_val:.0f}) > "
+                                f"1.5x run median ({median_resp:.0f}). Suspected double drop or weighing error."
                             )
 
                         alerts.append(
@@ -223,39 +232,42 @@ class Batch:
                         )
 
         # --- 1. Range Check (Normalized only) ---
-        target_col = self.config.target_column
-        norm_col = f"corrected_{target_col}"
-
+        norm_col = f"corrected_{self.config.target_column}"
         if norm_col in valid.columns:
             r_min, r_max = self.config.absolute_range
-            out_of_range = valid[
-                (valid[norm_col] < r_min) | (valid[norm_col] > r_max)
-            ]
+            out_of_range = valid[(valid[norm_col] < r_min) | (valid[norm_col] > r_max)]
             for _, row in out_of_range.iterrows():
                 alerts.append(
                     {
                         "row": row.get("row", -1),
                         "sample_name": row["sample_name"],
-                        "reason": f"Value {row[norm_col]:.2f} is outside expected range ({r_min}, {r_max})",
+                        "reason": (
+                            f"Value {row[norm_col]:.2f} is outside expected range ({r_min}, {r_max})"
+                        ),
                     }
                 )
 
         # --- 2. Precision Check (Variance) ---
         if self.config.method_precision > 0:
             threshold = 3 * self.config.method_precision
-            # Calculate STD per sample
             precision_stats = valid.groupby("sample_name")["working_value"].std().reset_index()
-            flagged_samples = precision_stats[precision_stats["working_value"] > threshold]["sample_name"]
+            flagged_samples = precision_stats[precision_stats["working_value"] > threshold][
+                "sample_name"
+            ]
 
             for name in flagged_samples:
                 sample_rows = valid[valid["sample_name"] == name]
-                val_std = precision_stats[precision_stats["sample_name"] == name]["working_value"].values[0]
+                val_std = precision_stats[precision_stats["sample_name"] == name][
+                    "working_value"
+                ].values[0]
                 for _, row in sample_rows.iterrows():
                     alerts.append(
                         {
                             "row": row.get("row", -1),
                             "sample_name": name,
-                            "reason": f"High Variance: SD ({val_std:.2f}) > 3x method precision ({threshold:.2f})",
+                            "reason": (
+                                f"High Variance: SD ({val_std:.2f}) > 3x method precision ({threshold:.2f})"
+                            ),
                         }
                     )
 
@@ -263,7 +275,6 @@ class Batch:
         amp_col = self.config.amplitude_column
         if amp_col and amp_col in valid.columns:
             median_amp = valid[amp_col].median()
-            # Flag if < 50% or > 200% of median
             bad_amp = valid[
                 (valid[amp_col] < 0.5 * median_amp) | (valid[amp_col] > 2.0 * median_amp)
             ]
@@ -272,7 +283,9 @@ class Batch:
                     {
                         "row": row.get("row", -1),
                         "sample_name": row["sample_name"],
-                        "reason": f"Amplitude Anomaly: {row[amp_col]:.0f} is far from run median ({median_amp:.0f})",
+                        "reason": (
+                            f"Amplitude Anomaly: {row[amp_col]:.0f} is far from run median ({median_amp:.0f})"
+                        ),
                     }
                 )
 
@@ -288,7 +301,10 @@ class Batch:
                     {
                         "row": r_num,
                         "sample_name": sname,
-                        "reason": f"Single Replicate (n=1): Defaulted to instrumental method precision (1-σ = {prec:.2f} ‰) for uncertainty propagation.",
+                        "reason": (
+                            f"Single Replicate (n=1): Defaulted to instrumental method precision "
+                            f"(1-σ = {prec:.2f} ‰) for uncertainty propagation."
+                        ),
                     }
                 )
 
@@ -296,22 +312,26 @@ class Batch:
         if not self._alerts.empty:
             self._alerts = self._alerts.drop_duplicates()
 
-
-
     @property
     def excluded_rows_list(self) -> List[int]:
         """Returns a sorted list of unique Isodat row IDs currently marked as excluded."""
-        if hasattr(self, "replicates") and isinstance(self.replicates, pd.DataFrame) and "row" in self.replicates.columns and "excluded" in self.replicates.columns:
+        if (
+            hasattr(self, "replicates")
+            and isinstance(self.replicates, pd.DataFrame)
+            and "row" in self.replicates.columns
+            and "excluded" in self.replicates.columns
+        ):
             excluded_df = self.replicates[self.replicates["excluded"]]
             if not excluded_df.empty:
                 return sorted(list(excluded_df["row"].unique().astype(int)))
         return []
 
-    # --- Data Cleaning ---
+    # --- Data Cleaning & Canonical Correction Pipeline ---
 
     def exclude_rows(self, row_ids: List[int]):
         """
         Manually excludes specific rows (by Isodat Row number) from processing.
+        Automatically recomputes active pre-calibration corrections and refreshes diagnostics.
 
         Args:
             row_ids: List of 'row' numbers to exclude.
@@ -319,11 +339,37 @@ class Batch:
         if "row" in self.replicates.columns:
             mask = self.replicates["row"].isin(row_ids)
             self.replicates.loc[mask, "excluded"] = True
-            # Invalidate summary cache since data changed
-            self.summary = None
+            self._recompute_working_values()
         else:
             raise KeyError("Data does not contain 'row' column for exclusion.")
 
+    def _recompute_working_values(self):
+        """
+        Executes all active pre-calibration corrections in the strict CF-IRMS order of operations:
+            0. Reset working_value from raw target_column
+            1. Blank Correction (Mass Balance)
+            2. Linearity Correction (Peak Size / Signal Intensity)
+            3. Drift Correction (Temporal / Sequence Position)
+            4. Refresh diagnostics and invalidate calibration summary
+        """
+        # 0. Start cleanly from raw measured delta values
+        self.replicates["working_value"] = self.replicates[self.config.target_column].copy()
+
+        # 1. Stage 1: Mass-Balance Blank Correction
+        if self.blank_correction_applied and self._blank_params:
+            self._execute_blank_stage(**self._blank_params)
+
+        # 2. Stage 2: Signal Intensity / Peak Area Linearity Correction
+        if self.linearity_correction_applied and self._linearity_params:
+            self._execute_linearity_stage(**self._linearity_params)
+
+        # 3. Stage 3: Temporal Sequence Drift Correction
+        if self.drift_correction_applied and self._drift_params:
+            self._execute_drift_stage(**self._drift_params)
+
+        # 4. Invalidate calibration summary and refresh outlier diagnostics
+        self.summary = None
+        self.detect_outliers()
 
     # --- Standards Management ---
 
@@ -363,9 +409,354 @@ class Batch:
                 return std.name
         return None
 
-    # --- Drift Analysis ---
+    # --- Stage 1: Blank Correction ---
 
-    def check_drift(self, use_working: bool = False) -> pd.DataFrame:
+    def _find_preferred_area_column(self, df: pd.DataFrame) -> Optional[str]:
+        """Finds the primary peak area column based on config amplitude suffix or standard names."""
+        possible_areas = []
+        if self.config.amplitude_column:
+            suffix = self.config.amplitude_column.split("_")[-1]
+            possible_areas.append(f"area_{suffix}")
+        possible_areas.extend(["area_44", "area_28", "area_2", "area_all"])
+
+        for col in possible_areas:
+            if col in df.columns:
+                return col
+        return None
+
+    def apply_blank_correction(
+        self, blank_identifier: str = "bco cap", area_column: Optional[str] = None
+    ):
+        """
+        Applies mass-balance blank correction to working values (Stage 1 of CF-IRMS pipeline).
+
+        Formula:
+            A_net = A_raw - A_blk
+            d_corr = (A_raw * d_raw - A_blk * d_blk) / A_net
+
+        Args:
+            blank_identifier: Name (or partial alias) of the blank sample.
+            area_column: Specific area column to use. If None, auto-detected.
+        """
+        self._blank_params = {
+            "blank_identifier": blank_identifier,
+            "area_column": area_column,
+        }
+        self.blank_correction_applied = True
+        self._recompute_working_values()
+
+    def _execute_blank_stage(
+        self, blank_identifier: str = "bco cap", area_column: Optional[str] = None
+    ):
+        """Internal execution of Stage 1 (Blank Correction) on raw target values."""
+        valid = self.replicates[~self.replicates["excluded"]].copy()
+
+        blank_mask = (
+            valid["sample_name"].str.strip().str.lower() == blank_identifier.strip().lower()
+        )
+        blank_rows = valid[blank_mask]
+
+        if blank_rows.empty:
+            self.blank_correction_applied = False
+            self._blank_params = None
+            raise ValueError(
+                f"No valid rows matching blank identifier '{blank_identifier}' found."
+            )
+
+        if area_column is None:
+            area_column = self._find_preferred_area_column(self.replicates)
+
+        if not area_column or area_column not in self.replicates.columns:
+            self.blank_correction_applied = False
+            self._blank_params = None
+            raise KeyError("Could not auto-detect a valid 'area' column for blank correction.")
+
+        a_blk = float(blank_rows[area_column].mean())
+        a_blk_std = float(blank_rows[area_column].std()) if len(blank_rows) > 1 else 0.0
+        d_blk = float(blank_rows["working_value"].mean())
+        d_blk_std = float(blank_rows["working_value"].std()) if len(blank_rows) > 1 else 0.0
+
+        a_raw = self.replicates[area_column]
+        d_raw = self.replicates["working_value"]
+
+        a_net = a_raw - a_blk
+        d_corr = (a_raw * d_raw - a_blk * d_blk) / a_net
+
+        self.replicates["area_net"] = a_net
+        self.replicates["d_blank_corrected"] = d_corr
+        self.replicates["working_value"] = d_corr
+
+        self.blank_info = {
+            "identifier": blank_identifier,
+            "area_column": area_column,
+            "mean_area": a_blk,
+            "std_area": a_blk_std,
+            "mean_delta": d_blk,
+            "std_delta": d_blk_std,
+        }
+
+    # --- Stage 2: Linearity Analysis & Correction ---
+
+    def detect_area_column(self, area_column: Optional[str] = None) -> str:
+        """Detects the numeric peak area or amplitude column for linearity analysis."""
+        if area_column and area_column in self.replicates.columns:
+            return area_column
+
+        preferred = self._find_preferred_area_column(self.replicates)
+        if preferred:
+            return preferred
+
+        numeric_cols = self.replicates.select_dtypes(include=[np.number]).columns
+        candidates = [
+            col
+            for col in numeric_cols
+            if any(k in col.lower() for k in ["area", "ampl", "intensity", "signal"])
+            and col != "area_net"
+        ]
+        if candidates:
+            area_candidates = [c for c in candidates if "area" in c.lower()]
+            if area_candidates:
+                return area_candidates[0]
+            return candidates[0]
+
+        raise ValueError(
+            "Could not auto-detect numeric peak area/amplitude column. Please specify 'area_column'."
+        )
+
+    def _detect_area_column(self, area_column: Optional[str] = None) -> str:
+        """Backward-compatible alias for detect_area_column."""
+        return self.detect_area_column(area_column)
+
+    def check_linearity(  # pylint: disable=too-many-locals
+        self,
+        substance_name: Optional[str] = None,
+        area_column: Optional[str] = None,
+        use_working: bool = True,
+        target_col_override: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Quantifies signal intensity / peak area dependence (linearity) using OLS regression.
+
+        Calculates:
+        - Slope (delta per area/amplitude unit)
+        - CI_95 (95% Confidence Interval for slope)
+        - p_value and R_squared
+
+        Args:
+            substance_name: Optional standard/sample name to evaluate. If None, evaluates all groups.
+            area_column: Specific peak area or amplitude column name. Auto-detected if None.
+            use_working: Whether to regress working_value (True) or raw target delta (False).
+            target_col_override: Optional internal column name to regress against area.
+        """
+        if target_col_override and target_col_override in self.replicates.columns:
+            col_to_use = target_col_override
+        else:
+            col_to_use = "working_value" if use_working else self.config.target_column
+
+        area_col = self.detect_area_column(area_column)
+        valid_data = self.replicates[~self.replicates["excluded"]].copy()
+
+        if substance_name:
+            combined_reg = {**self.anchors, **self.controls, **self.drift_monitors}
+            sub_canonical = self.get_canonical_name(substance_name, combined_reg)
+            if not sub_canonical:
+                std_obj = get_standard(substance_name, target_column=self.config.target_column)
+                sub_canonical = std_obj.name if std_obj else substance_name
+
+            mask = (
+                valid_data["sample_name"].str.strip().str.lower()
+                == sub_canonical.strip().lower()
+            )
+            if not mask.any() and std_obj:
+                mask = valid_data["sample_name"].apply(std_obj.matches)
+            if not mask.any():
+                mask = valid_data["sample_name"].str.contains(
+                    substance_name, case=False, na=False
+                )
+            filtered = valid_data[mask]
+        else:
+            filtered = valid_data
+
+        if filtered.empty:
+            return pd.DataFrame(
+                columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"]
+            )
+
+        results = []
+        for name, group in filtered.groupby("sample_name"):
+            group_clean = group.dropna(subset=[area_col, col_to_use])
+            if len(group_clean) < 3:
+                continue
+
+            x = group_clean[area_col]
+            y = group_clean[col_to_use]
+
+            if x.max() == x.min():
+                continue
+
+            slope, _, r_value, p_value, std_err = sp_stats.linregress(x, y)
+            df_deg = len(x) - 2
+            t_crit = sp_stats.t.ppf(0.975, df_deg)
+            ci_95 = t_crit * std_err if not np.isnan(std_err) else 0.0
+
+            results.append(
+                {
+                    "Substance": name,
+                    "Slope": slope,
+                    "CI_95": ci_95,
+                    "p_value": p_value,
+                    "R_squared": r_value**2,
+                    "n": len(x),
+                    "Mean_Area": x.mean(),
+                }
+            )
+
+        if not results:
+            return pd.DataFrame(
+                columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"]
+            )
+
+        return pd.DataFrame(results).set_index("Substance")
+
+    def apply_linearity_correction(
+        self,
+        slope: Optional[float] = None,
+        substance_name: Optional[str] = None,
+        area_ref: Optional[float] = None,
+        area_column: Optional[str] = None,
+    ):
+        """
+        Applies mass/intensity linearity correction to working_value (Stage 2 of CF-IRMS pipeline).
+
+        Formula:
+            working_value = working_value - slope * (area - area_ref)
+
+        Args:
+            slope: Direct slope (delta unit per area unit). If None, inferred from substance_name.
+            substance_name: Standard/sample name used to infer slope if slope is None.
+            area_ref: Reference area value. If None, defaults to median area of valid replicates.
+            area_column: Specific column name for signal area/amplitude. Auto-detected if None.
+        """
+        if slope is None and not substance_name:
+            raise ValueError(
+                "Must provide either a direct 'slope' or a 'substance_name' to infer slope."
+            )
+
+        self._linearity_params = {
+            "slope": slope,
+            "substance_name": substance_name,
+            "area_ref": area_ref,
+            "area_column": area_column,
+        }
+        self.linearity_correction_applied = True
+        self._recompute_working_values()
+
+    def _execute_linearity_stage(
+        self,
+        slope: Optional[float] = None,
+        substance_name: Optional[str] = None,
+        area_ref: Optional[float] = None,
+        area_column: Optional[str] = None,
+    ):
+        """Internal execution of Stage 2 (Linearity Correction) on post-blank working_value."""
+        area_col = self.detect_area_column(area_column)
+
+        # Store pre-linearity working value (which is post-blank if blank correction is active)
+        self.replicates["pre_linearity_working_value"] = self.replicates[
+            "working_value"
+        ].copy()
+
+        ci_95 = None
+        p_val = None
+        r2 = None
+
+        is_direct = slope is not None
+        source_str = (
+            "Direct Input (Transferred Slope)" if is_direct else "Inferred from Run Replicates"
+        )
+
+        if slope is None:
+            stats = self.check_linearity(
+                substance_name=substance_name,
+                area_column=area_col,
+                target_col_override="pre_linearity_working_value",
+            )
+            if stats.empty:
+                self.linearity_correction_applied = False
+                self._linearity_params = None
+                raise ValueError(
+                    f"Could not calculate linearity slope for substance '{substance_name}'. "
+                    "Insufficient data."
+                )
+            matched_name = stats.index[0]
+            slope = float(stats.loc[matched_name, "Slope"])
+            ci_95 = float(stats.loc[matched_name, "CI_95"])
+            p_val = float(stats.loc[matched_name, "p_value"])
+            r2 = float(stats.loc[matched_name, "R_squared"])
+        elif substance_name:
+            stats = self.check_linearity(
+                substance_name=substance_name,
+                area_column=area_col,
+                target_col_override="pre_linearity_working_value",
+            )
+            if not stats.empty:
+                matched_name = stats.index[0]
+                ci_95 = float(stats.loc[matched_name, "CI_95"])
+                p_val = float(stats.loc[matched_name, "p_value"])
+                r2 = float(stats.loc[matched_name, "R_squared"])
+
+        valid_mask = ~self.replicates["excluded"]
+        if area_ref is None:
+            area_ref = float(self.replicates.loc[valid_mask, area_col].median())
+
+        d_lin = self.replicates["pre_linearity_working_value"] - slope * (
+            self.replicates[area_col] - area_ref
+        )
+        self.replicates["d_linearity_corrected"] = d_lin
+        self.replicates["working_value"] = d_lin
+
+        # Record attributes
+        self.linearity_slope = slope
+        self.linearity_ci95 = ci_95
+        self.linearity_p_value = p_val
+        self.linearity_r2 = r2
+        self.linearity_substance_used = substance_name or "Manual Input"
+        self.linearity_area_ref = area_ref
+        self.linearity_is_direct = is_direct
+        self.linearity_source = source_str
+        self.linearity_info = {
+            "slope": slope,
+            "ci_95": ci_95,
+            "p_value": p_val,
+            "r_squared": r2,
+            "substance": substance_name or "Manual Input",
+            "area_ref": area_ref,
+            "area_column": area_col,
+            "is_direct": is_direct,
+            "source": source_str,
+        }
+
+    # --- Stage 3: Drift Analysis & Correction ---
+
+    def _get_pre_drift_column(self) -> str:
+        """
+        Returns the column representing the data state immediately prior to drift correction
+        (i.e. post-blank and post-linearity if those stages were applied, otherwise raw target).
+        """
+        if "pre_drift_working_value" in self.replicates.columns:
+            return "pre_drift_working_value"
+        if (
+            self.linearity_correction_applied
+            and "d_linearity_corrected" in self.replicates.columns
+        ):
+            return "d_linearity_corrected"
+        if self.blank_correction_applied and "d_blank_corrected" in self.replicates.columns:
+            return "d_blank_corrected"
+        return self.config.target_column
+
+    def check_drift(
+        self, use_working: bool = False, target_col_override: Optional[str] = None
+    ) -> pd.DataFrame:
         """
         Calculates linear regression (Target vs Row) for all drift monitors.
 
@@ -373,21 +764,27 @@ class Batch:
 
         Args:
             use_working: If True, uses the current 'working_value' (which might be
-                        already drift-corrected). If False (default), uses the
-                        original raw target column.
+                already drift-corrected). If False (default), evaluates drift on the
+                pre-drift state (incorporating blank/linearity corrections if active,
+                or raw target values otherwise).
+            target_col_override: Optional explicit column name to evaluate.
         """
         if not self.drift_monitors:
             raise ValueError("No drift monitors set. Use set_drift_monitors() first.")
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
 
-        # Add canonical name for grouping
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self.get_canonical_name(x, self.drift_monitors)
         )
         drift_data = valid_data[valid_data["canonical_name"].notna()]
 
-        col_to_use = "working_value" if use_working else self.config.target_column
+        if target_col_override and target_col_override in valid_data.columns:
+            col_to_use = target_col_override
+        elif use_working:
+            col_to_use = "working_value"
+        else:
+            col_to_use = self._get_pre_drift_column()
 
         results = []
         for name, group in drift_data.groupby("canonical_name"):
@@ -404,14 +801,16 @@ class Batch:
             t_crit = sp_stats.t.ppf(0.975, df_deg)
             ci_95 = t_crit * std_err
 
-            results.append({
-                "Standard": name,
-                "Slope": slope,
-                "CI_95": ci_95,
-                "p_value": p_value,
-                "R_squared": r_value**2,
-                "n": len(x)
-            })
+            results.append(
+                {
+                    "Standard": name,
+                    "Slope": slope,
+                    "CI_95": ci_95,
+                    "p_value": p_value,
+                    "R_squared": r_value**2,
+                    "n": len(x),
+                }
+            )
 
         if not results:
             return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n"])
@@ -438,9 +837,8 @@ class Batch:
         if ax is None:
             _, ax = plt.subplots(figsize=(10, 6))
 
-        col_to_use = "working_value" if use_working else self.config.target_column
+        col_to_use = "working_value" if use_working else self._get_pre_drift_column()
 
-        # Plot individual points with different colors per monitor
         sns.scatterplot(
             data=drift_data,
             x="row",
@@ -449,328 +847,119 @@ class Batch:
             s=60,
             alpha=0.7,
             ax=ax,
-            zorder=3
+            zorder=3,
         )
 
-        # Add regression lines manually for better control
         stats_df = self.check_drift(use_working=use_working)
         for i, (name, row) in enumerate(stats_df.iterrows()):
             group = drift_data[drift_data["canonical_name"] == name]
             x = group["row"]
             y = group[col_to_use]
 
-            # Re-calculate line for plotting
             slope = row["Slope"]
             intercept = y.mean() - slope * x.mean()
             x_range = np.array([x.min(), x.max()])
             y_range = slope * x_range + intercept
 
-            ax.plot(x_range, y_range, linestyle='--', alpha=0.8, zorder=2, color="black")
+            ax.plot(x_range, y_range, linestyle="--", alpha=0.8, zorder=2, color="black")
 
-            # Enhanced annotation with CI for decision making
-            txt = (f"{name}:\n\n"
-                   f"  y = {slope:.3f}x + {intercept:.3f}\n"
-                   f"  Slope CI 95%: {slope:.3f} ± {row['CI_95']:.3f}\n"
-                   f"  R² = {row['R_squared']:.3f}, p = {row['p_value']:.3f}")
+            txt = (
+                f"{name}:\n\n"
+                f"  y = {slope:.3f}x + {intercept:.3f}\n"
+                f"  Slope CI 95%: {slope:.3f} ± {row['CI_95']:.3f}\n"
+                f"  R² = {row['R_squared']:.3f}, p = {row['p_value']:.3f}"
+            )
 
             ax.annotate(
                 txt,
-                xy=(0.02, 0.95 - i*0.15),
-                xycoords='axes fraction',
+                xy=(0.02, 0.95 - i * 0.15),
+                xycoords="axes fraction",
                 fontsize=9,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", alpha=0.8),
-                verticalalignment='top'
+                verticalalignment="top",
             )
 
-        # Formatting for consistency
-        ax.set_title(f"Analytical Drift: {self.config.name}", fontsize=12, fontweight='bold')
+        ax.set_title(f"Analytical Drift: {self.config.name}", fontsize=12, fontweight="bold")
         ax.set_xlabel("Injection (Row)", fontsize=10)
-        ax.set_ylabel(f"{'Working' if use_working else 'Raw'} {self.config.target_column}", fontsize=10)
-        ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend(title="Drift Monitor", loc='lower right')
+        ax.set_ylabel(
+            f"{'Working' if use_working else 'Pre-Drift'} {self.config.target_column}",
+            fontsize=10,
+        )
+        ax.grid(True, linestyle=":", alpha=0.6)
+        ax.legend(title="Drift Monitor", loc="lower right")
 
         return ax
 
     def apply_drift_correction(self, monitor_name: str):
         """
-        Applies a linear drift correction to the working data based on the specified monitor.
-        Always calculates the slope from RAW data to ensure consistency.
-        Formula: working_value = raw_value - (slope * row)
+        Applies a linear drift correction to the working data based on the specified monitor
+        (Stage 3 of CF-IRMS pipeline, executed after Blank and Linearity corrections).
+
+        Formula: working_value = pre_drift_working_value - (slope * row)
         """
-        # Always check drift on raw data to get the absolute slope
-        drift_stats = self.check_drift(use_working=False)
+        self._drift_params = {"monitor_name": monitor_name}
+        self.drift_correction_applied = True
+        self._recompute_working_values()
 
-        # Check if monitor_name is canonical or raw
-        if monitor_name not in drift_stats.index:
-            monitor_name = self.get_canonical_name(monitor_name, self.drift_monitors)
+    def _execute_drift_stage(self, monitor_name: str):
+        """Internal execution of Stage 3 (Drift Correction) on post-blank/post-linearity working_value."""
+        self.replicates["pre_drift_working_value"] = self.replicates["working_value"].copy()
 
-            if monitor_name not in drift_stats.index:
+        drift_stats = self.check_drift(
+            use_working=False, target_col_override="pre_drift_working_value"
+        )
+
+        resolved_monitor = monitor_name
+        if resolved_monitor not in drift_stats.index:
+            resolved_monitor = self.get_canonical_name(monitor_name, self.drift_monitors)
+            if not resolved_monitor or resolved_monitor not in drift_stats.index:
+                self.drift_correction_applied = False
+                self._drift_params = None
                 raise ValueError(
                     f"Monitor standard '{monitor_name}' not found or has insufficient data for drift analysis."
                 )
 
-        slope = float(drift_stats.loc[monitor_name, "Slope"])
-        ci_95 = float(drift_stats.loc[monitor_name, "CI_95"])
-        p_val = float(drift_stats.loc[monitor_name, "p_value"])
-        r2 = float(drift_stats.loc[monitor_name, "R_squared"])
+        slope = float(drift_stats.loc[resolved_monitor, "Slope"])
+        ci_95 = float(drift_stats.loc[resolved_monitor, "CI_95"])
+        p_val = float(drift_stats.loc[resolved_monitor, "p_value"])
+        r2 = float(drift_stats.loc[resolved_monitor, "R_squared"])
 
-        # Apply correction to working_value, starting from raw target
-        self.replicates["working_value"] = self.replicates[self.config.target_column] - (slope * self.replicates["row"])
+        d_drift = self.replicates["pre_drift_working_value"] - (
+            slope * self.replicates["row"]
+        )
+        self.replicates["d_drift_corrected"] = d_drift
+        self.replicates["working_value"] = d_drift
 
         # Record correction metadata
-        self.drift_correction_applied = True
-        self.drift_monitor_used = monitor_name
+        self.drift_monitor_used = resolved_monitor
         self.drift_slope = slope
         self.drift_ci95 = ci_95
         self.drift_p_value = p_val
         self.drift_r2 = r2
         self.drift_info = {
-            "monitor": monitor_name,
-            "slope": slope,
-            "ci_95": ci_95,
-            "p_value": p_val,
-            "r_squared": r2
-        }
-        # Invalidate summary cache
-        self.summary = None
-
-
-    def _detect_area_column(self, area_column: Optional[str] = None) -> str:
-        if area_column and area_column in self.replicates.columns:
-            return area_column
-
-        numeric_cols = self.replicates.select_dtypes(include=[np.number]).columns
-        candidates = [
-            col for col in numeric_cols
-            if any(k in col.lower() for k in ["area", "ampl", "intensity", "signal"])
-        ]
-        if candidates:
-            area_candidates = [c for c in candidates if "area" in c.lower()]
-            if area_candidates:
-                return area_candidates[0]
-            return candidates[0]
-
-        raise ValueError("Could not auto-detect numeric peak area/amplitude column. Please specify 'area_column'.")
-
-
-    def check_linearity(
-        self,
-        substance_name: Optional[str] = None,
-        area_column: Optional[str] = None,
-        use_working: bool = True
-    ) -> pd.DataFrame:
-        """
-        Quantifies signal intensity / peak area dependence (linearity) using OLS regression.
-
-        Calculates:
-        - Slope (delta per area/amplitude unit)
-        - CI_95 (95% Confidence Interval for slope)
-        - p_value and R_squared
-
-        Args:
-            substance_name: Optional standard/sample name to evaluate. If None, evaluates all groups.
-            area_column: Specific peak area or amplitude column name. Auto-detected if None.
-            use_working: Whether to regress working_value (True) or raw target delta (False).
-        """
-        col_to_use = "working_value" if use_working else self.config.target_column
-        area_col = self._detect_area_column(area_column)
-
-        valid_data = self.replicates[~self.replicates["excluded"]].copy()
-
-        if substance_name:
-            sub_canonical = self.get_canonical_name(substance_name, self.anchors) or substance_name
-            mask = valid_data["sample_name"].str.strip().str.lower() == sub_canonical.strip().lower()
-            if not mask.any():
-                mask = valid_data["sample_name"].str.contains(substance_name, case=False, na=False)
-            filtered = valid_data[mask]
-        else:
-            filtered = valid_data
-
-        if filtered.empty:
-            return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"])
-
-        results = []
-        for name, group in filtered.groupby("sample_name"):
-            group_clean = group.dropna(subset=[area_col, col_to_use])
-            if len(group_clean) < 3:
-                continue
-
-            x = group_clean[area_col]
-            y = group_clean[col_to_use]
-
-            if x.max() == x.min():
-                continue
-
-            slope, _, r_value, p_value, std_err = sp_stats.linregress(x, y)
-            df_deg = len(x) - 2
-            t_crit = sp_stats.t.ppf(0.975, df_deg)
-            ci_95 = t_crit * std_err if not np.isnan(std_err) else 0.0
-
-            results.append({
-                "Substance": name,
-                "Slope": slope,
-                "CI_95": ci_95,
-                "p_value": p_value,
-                "R_squared": r_value**2,
-                "n": len(x),
-                "Mean_Area": x.mean()
-            })
-
-        if not results:
-            return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"])
-
-        return pd.DataFrame(results).set_index("Substance")
-
-    def apply_linearity_correction(
-        self,
-        slope: Optional[float] = None,
-        substance_name: Optional[str] = None,
-        area_ref: Optional[float] = None,
-        area_column: Optional[str] = None
-    ):
-        """
-        Applies mass/intensity linearity correction to working_value.
-
-        Formula:
-            working_value = working_value - slope * (area - area_ref)
-
-        Args:
-            slope: Direct slope (delta unit per area unit). If None, inferred from substance_name.
-            substance_name: Standard/sample name used to infer slope if slope is None.
-            area_ref: Reference area value. If None, defaults to median area of valid replicates.
-            area_column: Specific column name for signal area/amplitude. Auto-detected if None.
-        """
-        area_col = self._detect_area_column(area_column)
-
-        ci_95 = None
-        p_val = None
-        r2 = None
-
-        is_direct = slope is not None
-        source_str = "Direct Input (Transferred Slope)" if is_direct else "Inferred from Run Replicates"
-
-        if slope is None:
-            if not substance_name:
-                raise ValueError("Must provide either a direct 'slope' or a 'substance_name' to infer slope.")
-            stats = self.check_linearity(substance_name=substance_name, area_column=area_col, use_working=True)
-            if stats.empty:
-                raise ValueError(f"Could not calculate linearity slope for substance '{substance_name}'. Insufficient data.")
-            matched_name = stats.index[0]
-            slope = float(stats.loc[matched_name, "Slope"])
-            ci_95 = float(stats.loc[matched_name, "CI_95"])
-            p_val = float(stats.loc[matched_name, "p_value"])
-            r2 = float(stats.loc[matched_name, "R_squared"])
-        else:
-            if substance_name:
-                stats = self.check_linearity(substance_name=substance_name, area_column=area_col, use_working=True)
-                if not stats.empty:
-                    matched_name = stats.index[0]
-                    ci_95 = float(stats.loc[matched_name, "CI_95"])
-                    p_val = float(stats.loc[matched_name, "p_value"])
-                    r2 = float(stats.loc[matched_name, "R_squared"])
-
-        valid_mask = ~self.replicates["excluded"]
-        if area_ref is None:
-            area_ref = float(self.replicates.loc[valid_mask, area_col].median())
-
-        # Store pre-linearity working value for auditing and accurate plot alignment
-        self.replicates["pre_linearity_working_value"] = self.replicates["working_value"].copy()
-
-        # Apply correction to working_value
-        self.replicates["working_value"] = self.replicates["working_value"] - slope * (self.replicates[area_col] - area_ref)
-
-
-        # Record attributes
-        self.linearity_correction_applied = True
-        self.linearity_slope = slope
-        self.linearity_ci95 = ci_95
-        self.linearity_p_value = p_val
-        self.linearity_r2 = r2
-        self.linearity_substance_used = substance_name or "Manual Input"
-        self.linearity_area_ref = area_ref
-        self.linearity_is_direct = is_direct
-        self.linearity_source = source_str
-        self.linearity_info = {
+            "monitor": resolved_monitor,
             "slope": slope,
             "ci_95": ci_95,
             "p_value": p_val,
             "r_squared": r2,
-            "substance": substance_name or "Manual Input",
-            "area_ref": area_ref,
-            "area_column": area_col,
-            "is_direct": is_direct,
-            "source": source_str
         }
 
+    # --- Stage 4: Calibration & Uncertainty Propagation ---
 
-        # Invalidate summary cache
-        self.summary = None
-
-
-
-    def apply_blank_correction(self, blank_identifier: str = "bco cap", area_column: Optional[str] = None):
-        """
-        Applies mass-balance blank correction to working values.
-
-        Formula:
-            A_net = A_raw - A_blk
-            d_corr = (A_raw * d_raw - A_blk * d_blk) / A_net
-
-        Args:
-            blank_identifier: Name (or partial alias) of the blank sample.
-            area_column: Specific area column to use. If None, auto-detected.
-        """
-        valid = self.replicates[~self.replicates["excluded"]].copy()
-
-        blank_mask = valid["sample_name"].str.strip().str.lower() == blank_identifier.strip().lower()
-        blank_rows = valid[blank_mask]
-
-        if blank_rows.empty:
-            raise ValueError(f"No valid rows matching blank identifier '{blank_identifier}' found.")
-
-        if area_column is None:
-            possible_areas = []
-            if self.config.amplitude_column:
-                suffix = self.config.amplitude_column.split("_")[-1]
-                possible_areas.append(f"area_{suffix}")
-            possible_areas.extend(["area_44", "area_28", "area_2", "area_all"])
-
-            for col in possible_areas:
-                if col in self.replicates.columns:
-                    area_column = col
-                    break
-
-        if not area_column or area_column not in self.replicates.columns:
-            raise KeyError("Could not auto-detect a valid 'area' column for blank correction.")
-
-        a_blk = blank_rows[area_column].mean()
-        a_blk_std = blank_rows[area_column].std()
-        d_blk = blank_rows["working_value"].mean()
-        d_blk_std = blank_rows["working_value"].std()
-
-        a_raw = self.replicates[area_column]
-        d_raw = self.replicates["working_value"]
-
-        a_net = a_raw - a_blk
-        d_corr = (a_raw * d_raw - a_blk * d_blk) / a_net
-
-        self.replicates["area_net"] = a_net
-        self.replicates["d_blank_corrected"] = d_corr
-        self.replicates["working_value"] = d_corr
-
-        self.blank_correction_applied = True
-        self.blank_info = {
-            "identifier": blank_identifier,
-            "area_column": area_column,
-            "mean_area": a_blk,
-            "std_area": a_blk_std,
-            "mean_delta": d_blk,
-            "std_delta": d_blk_std,
-        }
-        self.summary = None
+    def _get_working_value_label(self) -> str:
+        """Returns a descriptive y-axis label reflecting active pre-calibration corrections."""
+        active = []
+        if self.blank_correction_applied:
+            active.append("Blank")
+        if self.linearity_correction_applied:
+            active.append("Linearity")
+        if self.drift_correction_applied:
+            active.append("Drift")
+        if active:
+            return f"Measured {self.config.target_column} ({'/'.join(active)}-Corrected)"
+        return f"Measured {self.config.target_column} (Raw)"
 
     def plot_calibration(self, ax: Optional[plt.Axes] = None):
-
         """
         Plots the calibration curve showing all individual anchor replicates
         and the fitted calibration line.
@@ -806,7 +995,7 @@ class Batch:
             ax=ax,
             s=60,
             alpha=0.8,
-            zorder=3
+            zorder=3,
         )
 
         # 3. Draw the Calibration Line (Instrument Fit: Raw = m * True + b)
@@ -814,7 +1003,6 @@ class Batch:
         pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
         t_line = np.linspace(t_min - pad, t_max + pad, 100)
 
-        # Raw = m * True + b
         m = self.strategy.slope
         b = self.strategy.intercept
         y_line = (t_line * m) + b
@@ -822,41 +1010,40 @@ class Batch:
         ax.plot(
             t_line,
             y_line,
-            color='black',
-            linestyle='--',
-            label='Calibration Line',
-            zorder=2
+            color="black",
+            linestyle="--",
+            label="Calibration Line",
+            zorder=2,
         )
 
-        # Annotation with Equation and R2
-        txt = (f"Fit Equation (Measured vs True):\n"
-               f"  y = {m:.4f}x + {b:.4f}\n"
-               f"  R² = {self.strategy.r_squared:.4f}")
+        txt = (
+            f"Fit Equation (Measured vs True):\n"
+            f"  y = {m:.4f}x + {b:.4f}\n"
+            f"  R² = {self.strategy.r_squared:.4f}"
+        )
 
         ax.annotate(
             txt,
             xy=(0.05, 0.95),
-            xycoords='axes fraction',
+            xycoords="axes fraction",
             fontsize=10,
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", alpha=0.8),
-            verticalalignment='top'
+            verticalalignment="top",
         )
 
-        # Formatting for consistency
-        ax.set_title(f"Calibration Curve: {self.config.name}", fontsize=12, fontweight='bold')
+        ax.set_title(f"Calibration Curve: {self.config.name}", fontsize=12, fontweight="bold")
         ax.set_xlabel("Reference Value (True)", fontsize=10)
-        ax.set_ylabel(f"Measured {self.config.target_column} (Drift-Corrected)", fontsize=10)
-        ax.legend(loc='lower right')
-        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.set_ylabel(self._get_working_value_label(), fontsize=10)
+        ax.legend(loc="lower right")
+        ax.grid(True, linestyle=":", alpha=0.6)
 
         return ax
-
-    # --- Processing Core ---
 
     def process(self, strategy: CalibrationStrategy, use_method_precision: bool = False):
         """
         The Main Pipeline:
 
+        0. Ensure pre-calibration corrections (Blank -> Linearity -> Drift) are up to date
         1. Run Diagnostics (Detect Outliers)
         2. Prepare Anchor Stats for fitting
         3. Fit Strategy (using Anchors from working_value)
@@ -868,9 +1055,10 @@ class Batch:
         self.strategy = strategy
         self.use_method_precision = use_method_precision
 
+        # Ensure canonical correction pipeline is freshly computed
+        self._recompute_working_values()
 
-        # A. Run Diagnostics
-        self.detect_outliers()
+        # A. Warn if pre-calibration diagnostics found suspicious points
         if not self._alerts.empty:
             warnings.warn(
                 f"Detected {len(self._alerts)} suspicious data points. "
@@ -878,10 +1066,9 @@ class Batch:
             )
 
         # B. Filter valid data for calculation
-        valid_data = self.replicates[~self.replicates["excluded"]]
+        valid_data = self.replicates[~self.replicates["excluded"]].copy()
 
         # C. Prepare Anchor Stats for Fitting
-        valid_data = valid_data.copy()
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self.get_canonical_name(x, self.anchors)
         )
@@ -900,7 +1087,6 @@ class Batch:
         if use_method_precision:
             anchor_stats["sem"] = prec / np.sqrt(anchor_stats["count"])
         else:
-            # Fallback for count == 1 or NaN sem: use instrument method precision / sqrt(n)
             anchor_stats["sem"] = anchor_stats["sem"].fillna(
                 prec / np.sqrt(anchor_stats["count"])
             )
@@ -909,54 +1095,42 @@ class Batch:
         strategy.fit(anchor_stats, self.anchors)
 
         # E. Apply to Replicates (Vectorized)
-        # Always use working_value as input
         target_col = self.config.target_column
         norm_col = f"corrected_{target_col}"
         if norm_col in self.replicates.columns:
             self.replicates = self.replicates.drop(columns=[norm_col])
 
         self.replicates = strategy.apply(self.replicates, "working_value")
-
-        # Rename the output column to match the expected client-facing name
         self.replicates = self.replicates.rename(
             columns={"corrected_working_value": norm_col}
         )
 
         # F. Aggregate to Summary (Sample Level)
-        # We group by canonical name for standards, but keep raw names for unknowns
         summary_data = self.replicates[~self.replicates["excluded"]].copy()
 
         def get_group_name(raw_name):
-            # Check Anchors first
             can_name = self.get_canonical_name(raw_name, self.anchors)
             if can_name:
                 return can_name
-            # Then Controls
             can_name = self.get_canonical_name(raw_name, self.controls)
             if can_name:
                 return can_name
-            # Fallback to raw name
             return raw_name
 
         summary_data["group_name"] = summary_data["sample_name"].apply(get_group_name)
 
-        self.summary = summary_data.groupby("group_name")[
-            "working_value"
-        ].agg(["mean", "sem", "count"])
+        self.summary = summary_data.groupby("group_name")["working_value"].agg(
+            ["mean", "sem", "count"]
+        )
 
         if use_method_precision:
             self.summary["sem"] = prec / np.sqrt(self.summary["count"])
         else:
-            # Fallback for count == 1 or NaN sem: use instrument method precision / sqrt(n)
             self.summary["sem"] = self.summary["sem"].fillna(
                 prec / np.sqrt(self.summary["count"])
             )
 
-
-
         # G. Propagate Uncertainty (Sample Level)
-        # strategy.propagate will add 'combined_uncertainty' and its own 'corrected_{target_col}'
-        # but we need to tell it that the input mean is 'working_value'
         self.summary = strategy.propagate(self.summary, self.config.target_column)
 
         # H. Refresh Diagnostics (Now including Range Checks on normalized data)
@@ -975,9 +1149,6 @@ class Batch:
         if self.summary is None:
             raise RuntimeError("Run .process() before requesting a report.")
 
-        # Clean up the table for display
-        # We might want to filter out the Anchors from the main report?
-        # For now, return everything clean
         cols = [
             f"corrected_{self.config.target_column}",
             "combined_uncertainty",
@@ -991,13 +1162,11 @@ class Batch:
         if self.summary is None:
             raise RuntimeError("Run .process() before requesting QAQC.")
 
-        # Filter summary for rows that match our Controls
         qc_rows = []
         for sample_name in self.summary.index:
             canonical_name = self.get_canonical_name(sample_name, self.controls)
             if canonical_name:
                 std_obj = self.controls[canonical_name]
-                # Found a QC sample
                 row = self.summary.loc[sample_name].copy()
                 row["True_Value"] = std_obj.d_true
                 row["Bias"] = (
@@ -1005,7 +1174,7 @@ class Batch:
                 )
                 row["Within_Unc"] = abs(row["Bias"]) < (
                     2 * row["combined_uncertainty"]
-                )  # Simple check
+                )
                 qc_rows.append(row)
 
         if not qc_rows:
