@@ -41,7 +41,7 @@ $$
 s_{y/x} = \sqrt{\frac{\sum_{i=1}^{K} \left(\bar{\delta}_{\text{meas},i} - (m \times \delta_{\text{true},i} + b)\right)^2}{K - 2}}
 $$
 
-Propagating $s_{y/x} / |m|$ ensures that any non-linearity or matrix mismatch among the calibration anchors is reflected in the final uncertainty budget.
+Propagating the fit residual uncertainty ($s_{y/x} / (|m| \times \sqrt{K})$) ensures that any non-linearity or matrix mismatch among the calibration anchors is reflected in the final uncertainty budget.
 
 ## Full-Pipeline Uncertainty Propagation (The Kragten Method)
 
@@ -53,8 +53,8 @@ Analytical partial-derivative formulas for error propagation become cumbersome a
     *   Anchor measured uncertainties $u(\bar{\delta}_{\text{anchor},i})$ and certified uncertainties $u(\delta_{\text{true},i})$.
     *   OLS calibration fit residual scatter $s_{y/x}$ (for `MultiPointLinear` when $K \ge 3$).
     *   **Pre-calibration correction uncertainties** (`u_blank`, `u_linearity`, `u_drift`) when those corrections are active.
-2.  **Numerical Perturbation:** Each input $x_i$ is perturbed one at a time by its 1-$\sigma$ standard uncertainty $u(x_i)$, and the calibration model is re-evaluated to compute individual sensitivity shifts $\Delta y_i = f(x_1, \dots, x_i + u(x_i), \dots) - f(x_1, \dots, x_k)$.
-3.  **Quadrature Combination:** The resulting shifts are combined in quadrature to obtain the combined standard uncertainty $u_c$:
+2.  **Numerical Perturbation:** Each calibration input $x_i$ is perturbed one at a time by its 1-$\sigma$ standard uncertainty $u(x_i)$, and the calibration model is re-evaluated to compute individual sensitivity shifts $\Delta y_i = f(x_1, \dots, x_i + u(x_i), \dots) - f(x_1, \dots, x_k)$. Pre-calibration working-scale uncertainties (`u_blank`, `u_linearity`, `u_drift`) are scaled to the normalized scale by $1 / |m|$.
+3.  **Quadrature Combination:** The resulting variance contributions are combined in quadrature to obtain the combined standard uncertainty $u_c$:
 
 $$
 u_c(y) = \sqrt{\sum_{i=1}^{k} (\Delta y_i)^2}

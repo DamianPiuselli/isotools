@@ -1,4 +1,5 @@
-[![Pylint](https://github.com/DamianPiuselli/IRMS/actions/workflows/pylint.yml/badge.svg)](https://github.com/DamianPiuselli/IRMS/actions/workflows/pylint.yml)
+[![Tests](https://github.com/DamianPiuselli/isotools/actions/workflows/main.yml/badge.svg)](https://github.com/DamianPiuselli/isotools/actions/workflows/main.yml)
+[![Pylint](https://github.com/DamianPiuselli/isotools/actions/workflows/pylint.yml/badge.svg)](https://github.com/DamianPiuselli/isotools/actions/workflows/pylint.yml)
 
 # isotools
 
@@ -57,7 +58,7 @@ For detailed information, see:
 1.  **[Concepts and Workflow](docs/concepts_and_workflow.md):** Understanding the `Batch` lifecycle, the canonical CF-IRMS order of operations, small-$N$ outlier philosophy, and `QualityControlLog` Shewhart charts.
 2.  **[Calibration and Uncertainty](docs/calibration_and_uncertainty.md):** Mathematical details of calibration strategies (`SinglePointOffset`, `TwoPointLinear`, `MultiPointLinear`), full-pipeline Kragten propagation, and `batch.uncertainty_budget`.
 3.  **[Managing Standards](docs/managing_standards.md):** Built-in IAEA/USGS/NIST standards registry, elemental mass fractions, isotope disambiguation, and custom registration.
-4.  **[Worked Examples](examples/dual_isotope_water/):** Complete synthetic dual-isotope water ($\delta^2\text{H}$ and $\delta^{18}\text{O}$) generator and ISO 17025 report pipeline.
+4.  **[Worked Examples](examples/dual_isotope_water/):** Complete synthetic dual-isotope water ($\delta^{2}\text{H}$ and $\delta^{18}\text{O}$) generator and ISO 17025 report pipeline.
 
 ---
 *Developed for stable isotope researchers who want to move from spreadsheets to reproducible code.*

@@ -6,43 +6,53 @@
 
 In Continuous-Flow Isotope Ratio Mass Spectrometry (CF-IRMS), following the *FIRMS Good Practice Guide for Isotope Ratio Mass Spectrometry* (Carter & Barwick) and the *Principle of Identical Treatment* (Werner & Brand, 2001), raw measured isotope delta values ($\delta_{\text{raw}}$) must be corrected in a strict physical sequence before scale normalization:
 
-1.  **Stage 0 — Row Exclusions & Injection Filtering (`exclude_rows`, `exclude_first_injections`):**
-    *   Failed injections (missing sample peaks, double drops, severe amplitude anomalies, or integration outliers) are flagged and excluded first so they never bias blank averages, linearity slopes, drift slopes, or calibration fits.
-    *   In liquid water isotope analysis (TC/EA, equilibration, or laser spectroscopy), `batch.exclude_first_injections(n_skip)` automatically excludes the first $k$ injections of every contiguous vial block to eliminate early carryover-affected injections.
-2.  **Stage 0b — Sample-to-Sample Memory Correction (`apply_memory_correction`):**
-    *   Compensates for instrumental memory (carryover) between consecutive vials $i-1$ and $i$ following Gröning (2011) and van Geldern & Barth (2012). For injection $j$ within a new vial block:
+### Stage 0 — Row Exclusions & Injection Filtering (`exclude_rows`, `exclude_first_injections`)
+
+*   Failed injections (missing sample peaks, double drops, severe amplitude anomalies, or integration outliers) are flagged and excluded first so they never bias blank averages, linearity slopes, drift slopes, or calibration fits.
+*   In liquid water isotope analysis (TC/EA, equilibration, or laser spectroscopy), `batch.exclude_first_injections(n_skip)` automatically excludes the first $k$ injections of every contiguous vial block to eliminate early carryover-affected injections.
+
+### Stage 0b — Sample-to-Sample Memory Correction (`apply_memory_correction`)
+
+*   Compensates for instrumental memory (carryover) between consecutive vials $i-1$ and $i$ following Gröning (2011) and van Geldern & Barth (2012). For injection $j$ within a new vial block:
 
 $$
-\delta_{\text{mem\_corr}, i, j} = \delta_{\text{raw}, i, j} + \frac{m_j}{1 - m_j} \times \left(\delta_{\text{raw}, i, j} - \bar{\delta}_{\text{final}, i-1}\right)
+\delta_{\text{mem,corr}, i, j} = \delta_{\text{raw}, i, j} + \frac{m_j}{1 - m_j} \times \left(\delta_{\text{raw}, i, j} - \bar{\delta}_{\text{final}, i-1}\right)
 $$
 
-    *   Memory coefficients $[m_1, m_2, \dots]$ can be supplied manually or estimated automatically (`coefficients=None`) from large step transitions between standards in the sequence.
-3.  **Stage 1 — Blank Correction (`apply_blank_correction`):**
-    *   Subtracts the mass-balance contribution of background or container blanks (e.g., tin capsules or filters) from both peak area and delta values:
+*   Memory coefficients $[m_1, m_2, \dots]$ can be supplied manually or estimated automatically (`coefficients=None`) from large step transitions between standards in the sequence.
+
+### Stage 1 — Blank Correction (`apply_blank_correction`)
+
+*   Subtracts the mass-balance contribution of background or container blanks (e.g., tin capsules or filters) from both peak area and delta values:
 
 $$
-A_{\text{net}} = A_{\text{raw}} - \bar{A}_{\text{blk}}, \quad \delta_{\text{blank\_corr}} = \frac{A_{\text{raw}} \times \delta_{\text{in}} - \bar{A}_{\text{blk}} \times \bar{\delta}_{\text{blk}}}{A_{\text{net}}}
+A_{\text{net}} = A_{\text{raw}} - \bar{A}_{\text{blk}}, \quad \delta_{\text{blank,corr}} = \frac{A_{\text{raw}} \times \delta_{\text{in}} - \bar{A}_{\text{blk}} \times \bar{\delta}_{\text{blk}}}{A_{\text{net}}}
 $$
 
-    *   Applied before linearity because background contamination disproportionately shifts smaller peaks and would otherwise masquerade as an artificial linearity effect.
-4.  **Stage 2 — Linearity Correction (`apply_linearity_correction`):**
-    *   Corrects for ion-source and amplifier size dependence (shifts in $\delta$ as a function of peak area or amplitude $A$) relative to a reference area $A_{\text{ref}}$:
+*   Applied before linearity because background contamination disproportionately shifts smaller peaks and would otherwise masquerade as an artificial linearity effect.
+
+### Stage 2 — Linearity Correction (`apply_linearity_correction`)
+
+*   Corrects for ion-source and amplifier size dependence (shifts in $\delta$ as a function of peak area or amplitude $A$) relative to a reference area $A_{\text{ref}}$:
 
 $$
-\delta_{\text{lin\_corr}} = \delta_{\text{in}} - m_{\text{lin}} \times (A - A_{\text{ref}})
+\delta_{\text{lin,corr}} = \delta_{\text{in}} - m_{\text{lin}} \times (A - A_{\text{ref}})
 $$
 
-    *   The slope $m_{\text{lin}}$ can be inferred automatically from variable-mass standards within the run or transferred directly from a characterization sequence.
-5.  **Stage 3 — Drift Correction (`apply_drift_correction`):**
-    *   Compensates for slow, time-dependent changes across the analytical sequence (modeled against injection `row`) using periodically interspersed drift monitor standards. Supports both linear (`degree=1`) and polynomial (`degree=2`, etc.) drift models:
+*   The slope $m_{\text{lin}}$ can be inferred automatically from variable-mass standards within the run or transferred directly from a characterization sequence.
+
+### Stage 3 — Drift Correction (`apply_drift_correction`)
+
+*   Compensates for slow, time-dependent changes across the analytical sequence (modeled against injection `row`) using periodically interspersed drift monitor standards. Supports both linear (`degree=1`) and polynomial (`degree=2`, etc.) drift models:
 
 $$
-\delta_{\text{drift\_corr}} = \delta_{\text{in}} - P_{\text{drift}}(\text{row})
+\delta_{\text{drift,corr}} = \delta_{\text{in}} - P_{\text{drift}}(\text{row})
 $$
 
-6.  **Stage 4 — Scale Normalization & Elemental Composition (`process`, `calibrate_elemental_composition`):**
-    *   Fits the chosen calibration strategy (`SinglePointOffset`, `TwoPointLinear`, or `MultiPointLinear`) to the cleaned `working_value` of the registered **Anchor** standards, normalizes all replicates to the international scale (`VSMOW-SLAP`, `VPDB`, `AIR-N2`), and propagates full-pipeline combined standard uncertainty via the **Kragten method**.
-    *   For weighed solid EA-IRMS runs (`CARBON_13C`, `NITROGEN`), `batch.calibrate_elemental_composition()` uses peak areas and sample weights (`Amount`) against standards with known elemental mass fractions (`mass_fraction`) to compute $\text{\%C}$ (`weight_pct_C`) and $\text{\%N}$ (`weight_pct_N`). When combined in `generate_dual_isotope_html_report()`, mass and molar atomic $\text{C/N}$ ratios ($\text{C/N}_{\text{atomic}} = (\text{\%C} / \text{\%N}) \times (14.0067 / 12.011)$) are automatically calculated.
+### Stage 4 — Scale Normalization & Elemental Composition (`process`, `calibrate_elemental_composition`)
+
+*   Fits the chosen calibration strategy (`SinglePointOffset`, `TwoPointLinear`, or `MultiPointLinear`) to the cleaned `working_value` of the registered **Anchor** standards, normalizes all replicates to the international scale (`VSMOW-SLAP`, `VPDB`, `AIR-N2`), and propagates full-pipeline combined standard uncertainty via the **Kragten method**.
+*   For weighed solid EA-IRMS runs (`CARBON_13C`, `NITROGEN`), `batch.calibrate_elemental_composition()` uses peak areas and sample weights (`Amount`) against standards with known elemental mass fractions (`mass_fraction`) to compute $\text{\%C}$ (`weight_pct_C`) and $\text{\%N}$ (`weight_pct_N`). When combined in `generate_dual_isotope_html_report()`, mass and molar atomic $\text{C/N}$ ratios ($\text{C/N}_{\text{atomic}} = (\text{\%C} / \text{\%N}) \times (14.0067 / 12.011)$) are automatically calculated.
 
 ### Deterministic Execution
 
@@ -87,9 +97,9 @@ qc_log.save_shewhart_html("USGS35", "USGS35_Shewhart_Chart.html")
 ## Reporting & Traceability
 
 Once `.process()` has been executed:
--   `batch.report`: Returns a clean summary DataFrame with normalized $\delta$ values, combined standard uncertainties (`combined_uncertainty`), elemental weight percents (if calibrated), and replicate counts (`count`).
+-   `batch.report`: Returns a clean summary DataFrame with normalized $\delta$ values, combined standard uncertainties (`combined_uncertainty`), replicate counts (`count`), and elemental weight percents (`weight_pct_C`, `u_weight_pct_C`, etc., if calibrated).
 -   `batch.uncertainty_budget`: Returns the variance percentage breakdown (`pct_measurement`, `pct_anchors`, `pct_fit_residual`, `pct_blank`, `pct_linearity`, `pct_drift`) for every group.
 -   `batch.qaqc`: Returns a trueness verification table comparing calibrated **Control** standards against their certified values (`True_Value`, `u_True`, `Bias`, `En_Score`, `Within_Unc`).
--   `batch.save_report("report.xlsx")`: Exports `Results`, `Uncertainty_Budget`, `QAQC`, and `Parameters` sheets to an Excel workbook.
+-   `batch.save_report("report.xlsx")`: Exports `Results`, `QAQC`, `Uncertainty_Budget`, and `Parameters` sheets to an Excel workbook.
 -   `batch.save_html_report("report.html")`: Generates a standalone, interactive ISO 17025 HTML report containing the processing lineage audit, diagnostic alert logs, interactive Plotly graphs, uncertainty budget table, and sortable tables.
--   `generate_dual_isotope_html_report(batch1, batch2, "dual_report.html")`: Combines two processed batches (e.g., $\delta^2\text{H}$ and $\delta^{18}\text{O}$ in water with $d\text{-excess}$ and GMWL/LMWL fits, or $\delta^{13}\text{C}$ and $\delta^{15}\text{N}$ with $\text{C/N}_{\text{atomic}}$ ratios) into a unified HTML dashboard.
+-   `generate_dual_isotope_html_report(batch1, batch2, "dual_report.html")`: Combines two processed batches (e.g., $\delta^{2}\text{H}$ and $\delta^{18}\text{O}$ in water with $d\text{-excess}$ and GMWL/LMWL fits, or $\delta^{13}\text{C}$ and $\delta^{15}\text{N}$ with $\text{C/N}_{\text{atomic}}$ ratios) into a unified HTML dashboard.

@@ -11,7 +11,7 @@
 
 ## Phase 2: Usability & Reporting
 - [x] **Task 4: Standardized Export**
-    - Implement `Batch.save_report(filepath)` to export `Results`, `Uncertainty_Budget`, `QAQC`, and `Parameters` sheets to a multi-sheet Excel file with full correction metadata.
+    - Implement `Batch.save_report(filepath)` to export `Results`, `QAQC`, `Uncertainty_Budget`, and `Parameters` sheets to a multi-sheet Excel file with full correction metadata.
 - [x] **Task 5: Improved Grouping**
     - Ensure anchor and control standards are aggregated by canonical name in the final report, even if raw names differ.
 

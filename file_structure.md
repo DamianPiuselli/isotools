@@ -1,3 +1,4 @@
+```text
 isotools/
 ├── .github/
 │   └── workflows/
@@ -26,7 +27,7 @@ isotools/
 │   ├── standards.py            # Registry of reference materials, get_standard, register_standard
 │   ├── reporting/              # Export and visualization modules
 │   │   ├── __init__.py
-│   │   ├── excel.py            # Multi-sheet Excel exporter (Results, Uncertainty_Budget, QAQC, Parameters)
+│   │   ├── excel.py            # Multi-sheet Excel exporter (Results, QAQC, Uncertainty_Budget, Parameters)
 │   │   ├── html.py             # Standalone Plotly + Jinja2 HTML report generators
 │   │   ├── assets/             # Laboratory logo and static assets
 │   │   │   └── isologo_lih.jpg
@@ -65,3 +66,4 @@ isotools/
 ├── uv.lock                     # Deterministic uv dependency lockfile
 ├── .gitignore
 └── .pylintrc                   # Linting configuration
+```

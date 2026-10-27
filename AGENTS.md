@@ -42,7 +42,7 @@ When working in a team or as an individual agent, tasks are typically split into
 *   **Focus:** Exporting analysis summaries to Excel and generating interactive dashboards.
 *   **Core Files:**
     *   `isotools/reporting/html.py`: Handles Plotly graph creation and Jinja2 HTML rendering (`generate_html_report` and `generate_dual_isotope_html_report`, including $d\text{-excess}$ and $\text{C/N}_{\text{atomic}}$).
-    *   `isotools/reporting/excel.py`: Handles multi-sheet Excel export (`export_batch_to_excel` with `Results`, `Uncertainty_Budget`, `QAQC`, and `Parameters` sheets).
+    *   `isotools/reporting/excel.py`: Handles multi-sheet Excel export (`export_batch_to_excel` with `Results`, `QAQC`, `Uncertainty_Budget`, and `Parameters` sheets).
     *   `isotools/core.py`: Contains the `Batch` class with `.save_report()` and `.save_html_report()` endpoints.
 *   **Key Rules:**
     *   Keep HTML reports fully standalone (embed Plotly graphs using non-binary HTML injection).

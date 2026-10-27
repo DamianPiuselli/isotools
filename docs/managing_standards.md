@@ -7,31 +7,43 @@ One of the most tedious parts of IRMS data processing is matching raw sample ide
 `isotools` comes pre-loaded with international IAEA, USGS, and NIST reference materials as well as regional working standards in `isotools.standards`:
 
 ### 1. Nitrogen ($\delta^{15}\text{N}$ vs. AIR-N2, `target_column="d15n"`)
--   **Nitrates & Ammonium Salts:** `USGS32` ($+180.0\,\text{‰}$), `USGS34` ($-1.8\,\text{‰}$), `USGS35` ($+2.7\,\text{‰}$), `IAEA_N1` ($+0.4\,\text{‰}$), `IAEA_N2` ($+20.3\,\text{‰}$), `IAEA_NO3` ($+4.7\,\text{‰}$)
+-   **Nitrates & Ammonium Salts (with $\text{\%N}$ `mass_fraction`):**
+    -   `USGS32` ($+180.0\,\text{‰}$, $13.85\,\text{\%N}$)
+    -   `USGS34` ($-1.8\,\text{‰}$, $13.85\,\text{\%N}$)
+    -   `USGS35` ($+2.7\,\text{‰}$, $16.47\,\text{\%N}$)
+    -   `IAEA_N1` (`IAEA-N-1`, $+0.4\,\text{‰}$, $21.20\,\text{\%N}$)
+    -   `IAEA_N2` (`IAEA-N-2`, $+20.3\,\text{‰}$, $21.20\,\text{\%N}$)
+    -   `IAEA_NO3` (`IAEA-NO-3`, $+4.7\,\text{‰}$, $13.85\,\text{\%N}$)
 -   **Organic & Amino Acid Standards (with $\text{\%N}$ `mass_fraction`):**
-    -   `IAEA600_N` (Caffeine, $+1.0\,\text{‰}$, $28.85\,\text{\%N}$)
+    -   `IAEA600_N` (`IAEA-600_N`, Caffeine, $+1.0\,\text{‰}$, $28.85\,\text{\%N}$)
     -   `USGS40_N` (L-glutamic acid, $-4.52\,\text{‰}$, $9.52\,\text{\%N}$)
-    -   `USGS41A_N` (L-glutamic acid enriched, $+47.55\,\text{‰}$, $9.52\,\text{\%N}$)
+    -   `USGS41A_N` (`USGS41a_N`, L-glutamic acid enriched, $+47.55\,\text{‰}$, $9.52\,\text{\%N}$)
     -   `USGS61_N` ($-2.87\,\text{‰}$), `USGS62_N` ($+20.17\,\text{‰}$), `USGS63_N` ($+37.83\,\text{‰}$) (Caffeines, $28.85\,\text{\%N}$)
-    -   `ACETANILIDE_N` ($+1.18\,\text{‰}$, $10.36\,\text{\%N}$)
+    -   `ACETANILIDE_N` (`Acetanilide_N`, $+1.18\,\text{‰}$, $10.36\,\text{\%N}$)
 
-### 2. Water Hydrogen ($\delta^2\text{H}$ vs. VSMOW-SLAP, `target_column="d2h"`)
+### 2. Water Hydrogen ($\delta^{2}\text{H}$ vs. VSMOW-SLAP, `target_column="d2h"`)
 -   **Primary & International Reference Waters:** `VSMOW2_H` ($0.0\,\text{‰}$), `SLAP2_H` ($-427.5\,\text{‰}$), `GISP_H` ($-189.5\,\text{‰}$), `USGS45_H` ($-10.3\,\text{‰}$), `USGS46_H` ($-235.8\,\text{‰}$), `USGS47_H` ($-150.2\,\text{‰}$), `USGS48_H` ($-2.0\,\text{‰}$)
--   **Laboratory Working Standards:** `MAR_H` (`Mar_H`), `BUENOS_AIRES_H` (`Buenos Aires_H`), `MENDOZA_H` (`Mendoza_H`), `ANTARTIDA_H` (`Antartida_H`)
+-   **Laboratory Working Standards:** `MAR_H` (`Mar_H`, $-0.49\,\text{‰}$), `BUENOS_AIRES_H` (`Buenos Aires_H`, $-36.92\,\text{‰}$), `MENDOZA_H` (`Mendoza_H`, $-72.07\,\text{‰}$), `ANTARTIDA_H` (`Antartida_H`, $-94.89\,\text{‰}$)
 
 ### 3. Water Oxygen ($\delta^{18}\text{O}$ vs. VSMOW-SLAP, `target_column="d18o"`)
 -   **Primary & International Reference Waters:** `VSMOW2_O` ($0.0\,\text{‰}$), `SLAP2_O` ($-55.5\,\text{‰}$), `GISP_O` ($-24.76\,\text{‰}$), `USGS45_O` ($-2.238\,\text{‰}$), `USGS46_O` ($-29.80\,\text{‰}$), `USGS47_O` ($-19.80\,\text{‰}$), `USGS48_O` ($-2.224\,\text{‰}$)
--   **Laboratory Working Standards:** `MAR_O` (`Mar_O`), `BUENOS_AIRES_O` (`Buenos Aires_O`), `MENDOZA_O` (`Mendoza_O`), `ANTARTIDA_O` (`Antartida_O`)
+-   **Laboratory Working Standards:** `MAR_O` (`Mar_O`, $-0.027\,\text{‰}$), `BUENOS_AIRES_O` (`Buenos Aires_O`, $-5.442\,\text{‰}$), `MENDOZA_O` (`Mendoza_O`, $-11.362\,\text{‰}$), `ANTARTIDA_O` (`Antartida_O`, $-12.78\,\text{‰}$)
 
 ### 4. Carbon ($\delta^{13}\text{C}$ vs. VPDB, `target_column="d13c"`)
--   **Carbonates, Graphites & Sugars:** `NBS19_C` ($+1.95\,\text{‰}$), `NBS18_C` ($-5.014\,\text{‰}$), `IAEA603_C` ($+2.46\,\text{‰}$), `IAEA_CH6` (Sucrose, $-10.449\,\text{‰}$, $42.10\,\text{\%C}$), `NIST8541` (USGS24 Graphite, $-16.05\,\text{‰}$), `SRM1649A` (Urban Dust, $-18.1\,\text{‰}$)
+-   **Carbonates, Graphites & Sugars (with $\text{\%C}$ `mass_fraction`):**
+    -   `NBS19_C` (`NBS19`, $+1.95\,\text{‰}$, $12.00\,\text{\%C}$)
+    -   `NBS18_C` (`NBS18`, $-5.014\,\text{‰}$, $12.00\,\text{\%C}$)
+    -   `IAEA603_C` (`IAEA-603`, $+2.46\,\text{‰}$, $12.00\,\text{\%C}$)
+    -   `IAEA_CH6` (`IAEA-CH-6`, Sucrose, $-10.449\,\text{‰}$, $42.10\,\text{\%C}$)
+    -   `NIST8541` (USGS24 Graphite, $-16.05\,\text{‰}$, $100.0\,\text{\%C}$)
+    -   `SRM1649A` (`1649a`, Urban Dust, $-25.60\,\text{‰}$, $17.68\,\text{\%C}$)
 -   **Organic & Amino Acid Standards (with $\text{\%C}$ `mass_fraction`):**
-    -   `IAEA600_C` (Caffeine, $-27.771\,\text{‰}$, $49.48\,\text{\%C}$)
-    -   `USGS40_C` (L-glutamic acid, $-26.389\,\text{‰}$, $40.79\,\text{\%C}$)
-    -   `USGS41A_C` (L-glutamic acid enriched, $+36.55\,\text{‰}$, $40.79\,\text{\%C}$)
+    -   `IAEA600_C` (`IAEA-600_C`, Caffeine, $-27.771\,\text{‰}$, $49.48\,\text{\%C}$)
+    -   `USGS40_C` (L-glutamic acid, $-26.39\,\text{‰}$, $40.82\,\text{\%C}$)
+    -   `USGS41A_C` (`USGS41a_C`, L-glutamic acid enriched, $+36.55\,\text{‰}$, $40.82\,\text{\%C}$)
     -   `USGS61_C` ($-35.05\,\text{‰}$), `USGS62_C` ($-14.79\,\text{‰}$), `USGS63_C` ($-1.17\,\text{‰}$) (Caffeines, $49.48\,\text{\%C}$)
-    -   `BENZOIC_ACID_C` (Benzoic Acid / `ac benzoico`, $-28.81\,\text{‰}$, $68.85\,\text{\%C}$)
-    -   `ACETANILIDE_C` ($-29.53\,\text{‰}$, $71.09\,\text{\%C}$)
+    -   `BENZOIC_ACID_C` (`Benzoic Acid` / `ac benzoico`, $-28.80\,\text{‰}$, $68.85\,\text{\%C}$)
+    -   `ACETANILIDE_C` (`Acetanilide_C`, $-29.53\,\text{‰}$, $71.09\,\text{\%C}$)
 
 ## The `ReferenceMaterial` Model
 
@@ -41,7 +53,7 @@ Each `ReferenceMaterial` is defined with:
 -   `u_true`: Certified 1-$\sigma$ standard uncertainty ($\text{‰}$).
 -   `aliases`: List of alternative names recognized in raw sequence files.
 -   `target_column`: Associated isotope target column (`"d15n"`, `"d2h"`, `"d18o"`, `"d13c"`), allowing `get_standard()` to disambiguate dual-isotope standards that share aliases (such as `"USGS40"`, `"IAEA-600"`, `"VSMOW2"`, or `"Mar"`).
--   `mass_fraction`: Optional elemental weight percentage (e.g., $40.79$ for $40.79\,\text{\%C}$ in USGS40) used by `batch.calibrate_elemental_composition()`.
+-   `mass_fraction`: Optional elemental weight percentage (e.g., $40.82$ for $40.82\,\text{\%C}$ in USGS40) used by `batch.calibrate_elemental_composition()`.
 -   `u_mass_fraction`: Optional 1-$\sigma$ uncertainty on `mass_fraction`.
 
 ## Aliasing and Matching
