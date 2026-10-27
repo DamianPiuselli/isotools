@@ -123,18 +123,48 @@ def test_calibrate_elemental_composition_and_dual_cn_ratio(mock_read):
     # Acetanilide: %C = 71.09, %N = 10.36 -> C/N mass = 6.862, C/N atomic = 8.002
     # Suppose k_C = 0.02 mg C / (V s), k_N = 0.01 mg N / (V s)
     df_c = pd.DataFrame([
-        {"Row": 1, "Identifier 1": "USGS40", "Peak Nr": 3, "Ampl 44": 2000.0, "d 13C/12C": -26.39, "Area 44": 20.395, "Amount": 1.0},
-        {"Row": 2, "Identifier 1": "USGS40", "Peak Nr": 3, "Ampl 44": 2000.0, "d 13C/12C": -26.39, "Area 44": 40.790, "Amount": 2.0},
-        {"Row": 3, "Identifier 1": "Acetanilide", "Peak Nr": 3, "Ampl 44": 2500.0, "d 13C/12C": -29.53, "Area 44": 35.545, "Amount": 1.0},
-        {"Row": 4, "Identifier 1": "Sample1", "Peak Nr": 3, "Ampl 44": 2200.0, "d 13C/12C": -25.00, "Area 44": 35.545, "Amount": 1.0},
-        {"Row": 5, "Identifier 1": "Sample1", "Peak Nr": 3, "Ampl 44": 2200.0, "d 13C/12C": -25.10, "Area 44": 35.545, "Amount": 1.0},
+        {
+            "Row": 1, "Identifier 1": "USGS40", "Peak Nr": 3, "Ampl 44": 2000.0,
+            "d 13C/12C": -26.39, "Area 44": 20.395, "Amount": 1.0,
+        },
+        {
+            "Row": 2, "Identifier 1": "USGS40", "Peak Nr": 3, "Ampl 44": 2000.0,
+            "d 13C/12C": -26.39, "Area 44": 40.790, "Amount": 2.0,
+        },
+        {
+            "Row": 3, "Identifier 1": "Acetanilide", "Peak Nr": 3, "Ampl 44": 2500.0,
+            "d 13C/12C": -29.53, "Area 44": 35.545, "Amount": 1.0,
+        },
+        {
+            "Row": 4, "Identifier 1": "Sample1", "Peak Nr": 3, "Ampl 44": 2200.0,
+            "d 13C/12C": -25.00, "Area 44": 35.545, "Amount": 1.0,
+        },
+        {
+            "Row": 5, "Identifier 1": "Sample1", "Peak Nr": 3, "Ampl 44": 2200.0,
+            "d 13C/12C": -25.10, "Area 44": 35.545, "Amount": 1.0,
+        },
     ])
     df_n = pd.DataFrame([
-        {"Row": 1, "Identifier 1": "USGS40", "Peak Nr": 2, "Ampl 28": 1500.0, "d 15N/14N": -4.52, "Area 28": 9.52, "Amount": 1.0},
-        {"Row": 2, "Identifier 1": "USGS40", "Peak Nr": 2, "Ampl 28": 1500.0, "d 15N/14N": -4.52, "Area 28": 19.04, "Amount": 2.0},
-        {"Row": 3, "Identifier 1": "Acetanilide", "Peak Nr": 2, "Ampl 28": 1600.0, "d 15N/14N": 1.18, "Area 28": 10.36, "Amount": 1.0},
-        {"Row": 4, "Identifier 1": "Sample1", "Peak Nr": 2, "Ampl 28": 1600.0, "d 15N/14N": 5.00, "Area 28": 10.36, "Amount": 1.0},
-        {"Row": 5, "Identifier 1": "Sample1", "Peak Nr": 2, "Ampl 28": 1600.0, "d 15N/14N": 5.10, "Area 28": 10.36, "Amount": 1.0},
+        {
+            "Row": 1, "Identifier 1": "USGS40", "Peak Nr": 2, "Ampl 28": 1500.0,
+            "d 15N/14N": -4.52, "Area 28": 9.52, "Amount": 1.0,
+        },
+        {
+            "Row": 2, "Identifier 1": "USGS40", "Peak Nr": 2, "Ampl 28": 1500.0,
+            "d 15N/14N": -4.52, "Area 28": 19.04, "Amount": 2.0,
+        },
+        {
+            "Row": 3, "Identifier 1": "Acetanilide", "Peak Nr": 2, "Ampl 28": 1600.0,
+            "d 15N/14N": 1.18, "Area 28": 10.36, "Amount": 1.0,
+        },
+        {
+            "Row": 4, "Identifier 1": "Sample1", "Peak Nr": 2, "Ampl 28": 1600.0,
+            "d 15N/14N": 5.00, "Area 28": 10.36, "Amount": 1.0,
+        },
+        {
+            "Row": 5, "Identifier 1": "Sample1", "Peak Nr": 2, "Ampl 28": 1600.0,
+            "d 15N/14N": 5.10, "Area 28": 10.36, "Amount": 1.0,
+        },
     ])
 
     mock_read.return_value = df_c

@@ -55,7 +55,7 @@ def _get_working_y_label(batch) -> str:
     return f"Measured {batch.config.target_column} (Raw)"
 
 
-def _create_drift_plot(batch) -> str:  # pylint: disable=too-many-locals
+def _create_drift_plot(batch) -> str:  # pylint: disable=too-many-locals,too-many-branches
     """Generates an interactive Plotly drift plot."""
     valid_data = batch.replicates[~batch.replicates["excluded"]].copy()
     if valid_data.empty:

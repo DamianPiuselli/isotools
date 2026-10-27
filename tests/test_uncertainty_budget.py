@@ -152,14 +152,10 @@ def test_full_pipeline_uncertainty_budget_in_batch(mock_read):
     assert not budget.empty
     assert "S1" in budget.index
 
-    pct_cols = [
-        "pct_measurement",
-        "pct_anchors",
-        "pct_fit_residual",
-        "pct_blank",
-        "pct_linearity",
-        "pct_drift",
-    ]
+    pct_cols = (
+        "pct_measurement", "pct_anchors", "pct_fit_residual",
+        "pct_blank", "pct_linearity", "pct_drift",
+    )
     for col in pct_cols:
         assert col in budget.columns
 

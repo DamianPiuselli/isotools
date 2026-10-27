@@ -4,7 +4,7 @@ Welcome! This document provides guidance, architecture context, and instructions
 
 ## 1. Codebase Overview
 **isotools** is a Python library designed for automated processing, normalization, and uncertainty propagation of Continuous-Flow Stable Isotope Ratio Mass Spectrometry (CF-IRMS) data.
-For general information and installation instructions, see [README.md](file:///home/damm/Projects/isotools/README.md).
+For general information and installation instructions, see [README.md](README.md).
 
 ## 2. Core Architectural Roles
 When working in a team or as an individual agent, tasks are typically split into the following functional roles:
@@ -12,8 +12,8 @@ When working in a team or as an individual agent, tasks are typically split into
 ### A. Data Ingestion Specialist
 *   **Focus:** Reading, parsing, and validating raw spectrometer Excel files.
 *   **Core Files:**
-    *   [isotools/utils/readers.py](file:///home/damm/Projects/isotools/isotools/utils/readers.py): Contains the [IsodatReader](file:///home/damm/Projects/isotools/isotools/utils/readers.py#L13) which handles loading and header validation.
-    *   [isotools/config.py](file:///home/damm/Projects/isotools/isotools/config.py): Contains [SystemConfig](file:///home/damm/Projects/isotools/isotools/config.py#L10) definition and isotopic system column mappings (`NITROGEN`, `WATER_H`, `WATER_O`, `CARBON_13C`).
+    *   `isotools/utils/readers.py`: Contains the `IsodatReader` which handles loading and header validation.
+    *   `isotools/config.py`: Contains `SystemConfig` definition (including `scale` and `element_symbol`) and isotopic system column mappings (`NITROGEN`, `WATER_H`, `WATER_O`, `CARBON_13C`).
 *   **Key Rules:**
     *   All raw file column validations must fail gracefully with descriptive error messages.
     *   Do not modify the raw data columns; instead, map them to internal standard names non-destructively (each internal name mapped at most once).
@@ -21,37 +21,38 @@ When working in a team or as an individual agent, tasks are typically split into
 ### B. Calibration & Mathematical Strategy Engineer
 *   **Focus:** Implementing pre-calibration corrections and calibration models to normalize raw machine delta values to international standards scales.
 *   **Core Files:**
-    *   [isotools/core.py](file:///home/damm/Projects/isotools/isotools/core.py): Enforces the canonical CF-IRMS order of operations (`0. Exclusions -> 1. Blank Correction -> 2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization`) via `Batch._recompute_working_values()`.
-    *   [isotools/strategies/normalization.py](file:///home/damm/Projects/isotools/isotools/strategies/normalization.py): Contains [TwoPointLinear](file:///home/damm/Projects/isotools/isotools/strategies/normalization.py#L14), [MultiPointLinear](file:///home/damm/Projects/isotools/isotools/strategies/normalization.py#L131), and [SinglePointOffset](file:///home/damm/Projects/isotools/isotools/strategies/normalization.py#L241).
+    *   `isotools/core.py`: Enforces the canonical CF-IRMS order of operations (`0. Exclusions & First-k Injection Filter -> 0b. Memory Correction -> 1. Blank Correction -> 2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization & Elemental Composition`) via `Batch._recompute_working_values()`.
+    *   `isotools/strategies/normalization.py`: Contains `TwoPointLinear`, `MultiPointLinear`, and `SinglePointOffset`.
 *   **Key Rules:**
-    *   Any new calibration strategy must subclass `CalibrationStrategy` from [isotools/strategies/abstract.py](file:///home/damm/Projects/isotools/isotools/strategies/abstract.py).
+    *   Any new calibration strategy must subclass `CalibrationStrategy` from `isotools/strategies/abstract.py`.
     *   Calibration fits are fitted using the `working_value` column of registered anchors.
 
 ### C. Metrologist & Uncertainty Auditor
 *   **Focus:** Scientific error propagation, uncertainty budgets, and quality control (QA/QC).
 *   **Core Files:**
-    *   [isotools/utils/kragten.py](file:///home/damm/Projects/isotools/isotools/utils/kragten.py): Contains the [propagate_kragten](file:///home/damm/Projects/isotools/isotools/utils/kragten.py#L8) numerical differentiation method.
-    *   [isotools/models.py](file:///home/damm/Projects/isotools/isotools/models.py): Contains the [ReferenceMaterial](file:///home/damm/Projects/isotools/isotools/models.py#L9) data model.
-    *   [isotools/standards.py](file:///home/damm/Projects/isotools/isotools/standards.py): Standard database of certified standards values, aliases, `get_standard()`, and `register_standard()`.
+    *   `isotools/utils/kragten.py`: Contains `propagate_kragten` and `propagate_kragten_budget` numerical differentiation methods.
+    *   `isotools/models.py`: Contains the `ReferenceMaterial` data model (including `mass_fraction` and `u_mass_fraction`).
+    *   `isotools/standards.py`: Standard database of certified IAEA, USGS, NIST, and laboratory reference materials, aliases, `get_standard()`, and `register_standard()`.
+    *   `isotools/qaqc_log.py`: Contains `QualityControlLog` for longitudinal laboratory QA/QC logging and Shewhart control chart generation.
 *   **Key Rules:**
-    *   Ensure all new calibration strategies implement a `.propagate()` method that performs numerical uncertainty propagation correctly.
-    *   Maintain strict checks for outlier flagging (missing sample peak, double drop response factor, variance, range, amplitude, and $n=1$ fallback).
+    *   Ensure all calibration strategies implement `.propagate()` using `propagate_kragten_budget` so `batch.uncertainty_budget` captures measurement, anchor, OLS fit residual ($s_{y/x}$), blank, linearity, and drift variance contributions.
+    *   Maintain strict checks for outlier flagging (missing sample peak, double drop response factor, small-$N$ median-based replicate flyer pinpointing, scale extrapolation alerts, range, amplitude, and $n=1$ fallback).
 
 ### D. Reporting & Visualization Specialist
 *   **Focus:** Exporting analysis summaries to Excel and generating interactive dashboards.
 *   **Core Files:**
-    *   [isotools/reporting/html.py](file:///home/damm/Projects/isotools/isotools/reporting/html.py): Handles Plotly graph creation and Jinja2 HTML rendering (`generate_html_report` and `generate_dual_isotope_html_report`).
-    *   [isotools/reporting/excel.py](file:///home/damm/Projects/isotools/isotools/reporting/excel.py): Handles multi-sheet Excel export (`export_batch_to_excel`).
-    *   [isotools/core.py](file:///home/damm/Projects/isotools/isotools/core.py): Contains the [Batch](file:///home/damm/Projects/isotools/isotools/core.py#L28) class with `.save_report()` and `.save_html_report()` endpoints.
+    *   `isotools/reporting/html.py`: Handles Plotly graph creation and Jinja2 HTML rendering (`generate_html_report` and `generate_dual_isotope_html_report`, including $d\text{-excess}$ and $\text{C/N}_{\text{atomic}}$).
+    *   `isotools/reporting/excel.py`: Handles multi-sheet Excel export (`export_batch_to_excel` with `Results`, `Uncertainty_Budget`, `QAQC`, and `Parameters` sheets).
+    *   `isotools/core.py`: Contains the `Batch` class with `.save_report()` and `.save_html_report()` endpoints.
 *   **Key Rules:**
     *   Keep HTML reports fully standalone (embed Plotly graphs using non-binary HTML injection).
-    *   Separate metadata, results, and QA/QC data into structured sheets in the Excel exporter.
+    *   Separate metadata, results, uncertainty budgets, and QA/QC data into structured sheets in the Excel exporter.
 
 ## 3. General Development Guidelines for Agents
 *   **Documentation Integrity:** Preserve all existing comments and docstrings unless explicitly asked to modify them.
-*   **Non-Destructive Operations:** Keep raw measurements intact. Save intermediate corrections in distinct columns (e.g., `d_blank_corrected`, `d_linearity_corrected`, `d_drift_corrected`, `working_value`, `corrected_d18o`).
-*   **Standard Naming:** Always use `get_canonical_name` from the [Batch](file:///home/damm/Projects/isotools/isotools/core.py#L28) class to resolve messy raw standard names into their canonical form before processing.
-*   **Testing:** Always write corresponding tests in [tests/](file:///home/damm/Projects/isotools/tests) for any new configuration, reader improvement, or math correction.
+*   **Non-Destructive Operations:** Keep raw measurements intact. Save intermediate corrections in distinct columns (e.g., `d_memory_corrected`, `d_blank_corrected`, `d_linearity_corrected`, `d_drift_corrected`, `working_value`, `corrected_d18o`).
+*   **Standard Naming:** Always use `get_canonical_name` from the `Batch` class to resolve messy raw standard names into their canonical form before processing.
+*   **Testing:** Always write corresponding tests in `tests/` for any new configuration, reader improvement, or math correction.
 
 ## 4. Report Writing & Markdown/HTML Compatibility Guidelines
 To ensure reports render seamlessly across Markdown editors (e.g., MarkText) and exported standalone HTML documents:
@@ -69,6 +70,6 @@ To ensure reports render seamlessly across Markdown editors (e.g., MarkText) and
     *   **Image Responsive Styling:** Include explicit CSS rules (`max-width: 100%; max-height: 480px; display: block; margin: 20px auto;`) to prevent high-DPI figures from overflowing page boundaries.
 
 ## 5. Useful Tasks
-*   **View Roadmap / Tasks:** Check [BACKLOG.md](file:///home/damm/Projects/isotools/BACKLOG.md) to see current development phase tasks.
+*   **View Roadmap / Tasks:** Check [BACKLOG.md](BACKLOG.md) to see current development phase tasks.
 *   **Running Tests:** Execute `uv run pytest` (or `pytest`) in the root folder to run the suite of unit and integration tests.
 *   **Running Linter:** Execute `uv run pylint $(git ls-files '*.py')` to verify code quality.

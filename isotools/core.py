@@ -36,7 +36,9 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         4b. Elemental Composition Calibration
     """
 
-    def __init__(self, filepath: str, config: SystemConfig, sheet_name: int | str = 0):
+    def __init__(  # pylint: disable=too-many-statements
+        self, filepath: str, config: SystemConfig, sheet_name: int | str = 0
+    ):
         """
         Initializes a new Batch from an Isodat file.
 
@@ -588,7 +590,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         block_ids = (
             valid_sorted["sample_name"] != valid_sorted["sample_name"].shift()
         ).cumsum()
-        blocks = [(blk_id, group) for blk_id, group in valid_sorted.groupby(block_ids)]
+        blocks = list(valid_sorted.groupby(block_ids))
 
         d_mem_series = self.replicates["working_value"].copy()
         prev_final: Optional[float] = None

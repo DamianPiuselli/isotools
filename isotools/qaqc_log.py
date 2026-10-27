@@ -328,7 +328,10 @@ class QualityControlLog:
     <style>
         body {{ font-family: system-ui, -apple-system, sans-serif; margin: 2rem; color: #1e293b; }}
         h1, h2 {{ color: #0f172a; }}
-        .summary {{ margin-bottom: 1.5rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }}
+        .summary {{
+            margin-bottom: 1.5rem; padding: 1rem; background: #f8fafc;
+            border: 1px solid #e2e8f0; border-radius: 6px;
+        }}
         table.table {{ border-collapse: collapse; width: 100%; font-size: 0.875rem; margin-top: 1rem; }}
         table.table th, table.table td {{ border: 1px solid #cbd5e1; padding: 0.5rem 0.75rem; text-align: left; }}
         table.table th {{ background: #f1f5f9; }}
