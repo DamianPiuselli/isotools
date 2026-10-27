@@ -157,4 +157,16 @@
         <p style="color: var(--text-muted); font-style: italic;">No Quality Control standards (trueness monitors) were registered in this analytical run.</p>
     {% endif %}
 </div>
+
+{% if budget_table_html %}
+<details class="section">
+    <summary style="cursor: pointer; user-select: none; font-size: 1.3rem; font-weight: 700; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+        <span>📊 Detailed Uncertainty Budget (% Variance Contribution)</span>
+        <span class="badge badge-success">Kragten Decomposition</span>
+    </summary>
+    <div class="table-container" style="margin-top: 15px;">
+        {{ budget_table_html | safe }}
+    </div>
+</details>
+{% endif %}
 {% endblock %}

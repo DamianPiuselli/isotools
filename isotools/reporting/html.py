@@ -42,6 +42,8 @@ def _get_logo_base64() -> Optional[str]:
 def _get_working_y_label(batch) -> str:
     """Returns a descriptive y-axis label reflecting active pre-calibration corrections."""
     active = []
+    if getattr(batch, "memory_correction_applied", False):
+        active.append("Memory")
     if getattr(batch, "blank_correction_applied", False):
         active.append("Blank")
     if getattr(batch, "linearity_correction_applied", False):
@@ -59,7 +61,7 @@ def _create_drift_plot(batch) -> str:  # pylint: disable=too-many-locals
     if valid_data.empty:
         return "<p>No data available for drift plot.</p>"
 
-    # Use pre-drift working values if blank or linearity corrections were applied prior to drift
+    # Use pre-drift working values if blank, linearity, or memory corrections were applied prior to drift
     if "pre_drift_working_value" in valid_data.columns:
         y_col = "pre_drift_working_value"
     elif (
@@ -72,17 +74,23 @@ def _create_drift_plot(batch) -> str:  # pylint: disable=too-many-locals
         and "d_blank_corrected" in valid_data.columns
     ):
         y_col = "d_blank_corrected"
+    elif (
+        getattr(batch, "memory_correction_applied", False)
+        and "d_memory_corrected" in valid_data.columns
+    ):
+        y_col = "d_memory_corrected"
     else:
         y_col = batch.config.target_column
 
-    if getattr(batch, "linearity_correction_applied", False) or getattr(
-        batch, "blank_correction_applied", False
+    if (
+        getattr(batch, "linearity_correction_applied", False)
+        or getattr(batch, "blank_correction_applied", False)
+        or getattr(batch, "memory_correction_applied", False)
     ):
         y_axis_label = f"Pre-Drift {batch.config.target_column} (‰)"
     else:
         y_axis_label = f"Raw {batch.config.target_column} (‰)"
 
-    # Identify drift monitors vs others
     valid_data["canonical_name"] = valid_data["sample_name"].apply(
         lambda x: batch.get_canonical_name(x, batch.drift_monitors)
     )
@@ -202,6 +210,9 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
     if anchor_data.empty:
         return "<p>No anchor data found.</p>"
 
+    scale_str = getattr(batch.config, "scale", "")
+    scale_suffix = f" vs. {scale_str}" if scale_str else ""
+
     # Specialized Plot Choice for SinglePointOffset (1 Anchor Standard)
     if (
         batch.strategy.__class__.__name__ == "SinglePointOffset"
@@ -217,7 +228,6 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
             mean_meas = float(group["working_value"].mean())
             std_meas = float(group["working_value"].std()) if len(group) > 1 else 0.0
 
-            # 1. Scatter Anchor Replicates by Injection Row
             fig.add_trace(
                 go.Scatter(
                     x=group["row"].tolist(),
@@ -236,11 +246,9 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
                 )
             )
 
-            # 2. Horizontal Reference Lines (Certified True vs Mean Measured)
             x_min, x_max = float(valid_data["row"].min()), float(valid_data["row"].max())
             x_pad = (x_max - x_min) * 0.05 if x_max != x_min else 1.0
 
-            # Certified True Value Line
             fig.add_shape(
                 type="line",
                 x0=x_min - x_pad,
@@ -250,7 +258,6 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
                 line=dict(color="#059669", width=2, dash="dash"),
             )
 
-            # Mean Measured Working Line
             fig.add_shape(
                 type="line",
                 x0=x_min - x_pad,
@@ -264,7 +271,7 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
             eq_text = (
                 f"<b>Single-Point Offset Normalization</b><br>"
                 f"<b>Anchor Standard:</b> {name}<br>"
-                f"<b>Certified True Value (δ<sub>true</sub>):</b> {d_true:.2f} ‰<br>"
+                f"<b>Certified True Value (δ<sub>true</sub>):</b> {d_true:.2f} ‰{scale_suffix}<br>"
                 f"<b>Mean Measured (δ<sub>meas</sub>):</b> {mean_meas:.3f} ± {std_meas:.3f} ‰<br>"
                 f"<b>Applied Constant Offset (Δδ):</b> {offset_val:+.3f} ‰"
             )
@@ -307,7 +314,6 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
     )
     fig = go.Figure()
 
-    # 1. Scatter Individual Replicates
     for name, group in anchor_data.groupby("canonical_name"):
         fig.add_trace(
             go.Scatter(
@@ -321,7 +327,6 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
             )
         )
 
-    # 2. Draw Calibration Line
     t_min, t_max = anchor_data["d_true"].min(), anchor_data["d_true"].max()
     pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
     t_line = np.linspace(t_min - pad, t_max + pad, 100).tolist()
@@ -341,7 +346,6 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
         )
     )
 
-    # 3. Annotation for Equation
     eq_text = f"y = {m:.4f}x + {b:.4f}<br>R² = {batch.strategy.r_squared:.4f}"
     fig.add_annotation(
         xref="paper",
@@ -365,7 +369,7 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
     fig.update_layout(
         autosize=True,
         title=f"Calibration Curve: {batch.config.name}",
-        xaxis_title="Reference Value (True)",
+        xaxis_title=f"Reference Value (True ‰{scale_suffix})",
         yaxis_title=_get_working_y_label(batch),
         xaxis=dict(range=[x_min - x_pad, x_max + x_pad], autorange=False),
         yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
@@ -423,7 +427,6 @@ def _create_linearity_plot(batch) -> str:  # pylint: disable=too-many-locals,too
     substance = getattr(batch, "linearity_substance_used", None)
     sub_data = _match_linearity_substance(valid_data, substance)
 
-    # Determine which Y series to plot
     if not sub_data.empty:
         if "pre_linearity_working_value" in sub_data.columns:
             y_col = "pre_linearity_working_value"
@@ -574,16 +577,13 @@ def generate_html_report(batch, filepath: str):
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("single_isotope.html")
 
-    # Prepare Data
     alerts = batch.alerts.to_dict("records") if not batch.alerts.empty else []
 
-    # Results table - Only if processed
     if batch.summary is not None:
         results_df = batch.report.copy().reset_index()
         results_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
         results_table_html = results_df.to_html(classes="table", border=0, index=False)
 
-        # QAQC table
         qaqc_df = batch.qaqc.copy()
         if not qaqc_df.empty:
             qaqc_df = qaqc_df.reset_index()
@@ -591,16 +591,21 @@ def generate_html_report(batch, filepath: str):
             qaqc_table_html = qaqc_df.to_html(classes="table", border=0, index=False)
         else:
             qaqc_table_html = None
+
+        budget_df = batch.uncertainty_budget.copy().reset_index()
+        budget_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
+        budget_table_html = budget_df.to_html(classes="table", border=0, index=False)
     else:
         results_table_html = (
             "<p><i>Batch not yet processed. Run .process() to see results.</i></p>"
         )
         qaqc_table_html = None
+        budget_table_html = None
 
-    # Metadata & Decision Audit Context
     context = {
         "logo_b64": _get_logo_base64(),
         "system_name": batch.config.name,
+        "scale_name": getattr(batch.config, "scale", ""),
         "filename": batch.filename,
         "filepath": batch.filepath,
         "acquisition_date": batch.acquisition_date,
@@ -620,12 +625,15 @@ def generate_html_report(batch, filepath: str):
             if batch.excluded_rows_list
             else "None"
         ),
+        "memory_correction_applied": getattr(batch, "memory_correction_applied", False),
+        "memory_info": getattr(batch, "memory_info", None),
         "blank_correction_applied": batch.blank_correction_applied,
         "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
         "drift_monitor_used": (
             batch.drift_monitor_used if batch.drift_correction_applied else "None"
         ),
+        "drift_degree": getattr(batch, "drift_degree", 1),
         "drift_slope": getattr(batch, "drift_slope", None),
         "drift_ci95": getattr(batch, "drift_ci95", None),
         "drift_p_value": getattr(batch, "drift_p_value", None),
@@ -655,6 +663,7 @@ def generate_html_report(batch, filepath: str):
         "cal_plot_html": _create_calibration_plot(batch),
         "results_table_html": results_table_html,
         "qaqc_table_html": qaqc_table_html,
+        "budget_table_html": budget_table_html,
     }
 
     html_content = template.render(context)
@@ -668,7 +677,6 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
     if batch1.summary is None or batch2.summary is None:
         return "<p>Both batches must be processed to generate a dual isotope plot.</p>"
 
-    # Determine x (18O or batch2) and y (2H or batch1)
     if "18o" in batch2.config.target_column.lower():
         b_x, b_y = batch2, batch1
     elif "18o" in batch1.config.target_column.lower():
@@ -688,7 +696,6 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
         df_x, df_y, left_index=True, right_index=True, suffixes=(suffix_x, suffix_y)
     )
 
-    # Exclude calibration anchors and control standards from the unknown sample scatter & LMWL fit
     standard_names = (
         set(b_x.anchors.keys())
         | set(b_x.controls.keys())
@@ -729,7 +736,6 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
         )
     )
 
-    # Add Global Meteoric Water Line (GMWL: y = 8x + 10) if water isotopes
     if "18o" in b_x.config.target_column.lower() and "2h" in b_y.config.target_column.lower():
         min_x = min(x_vals) - 3.0
         max_x = max(x_vals) + 3.0
@@ -769,11 +775,14 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
     x_pad = (x_max - x_min) * 0.08 if x_max != x_min else 1.0
     y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
 
+    scale_x = f" vs. {b_x.config.scale}" if getattr(b_x.config, "scale", "") else ""
+    scale_y = f" vs. {b_y.config.scale}" if getattr(b_y.config, "scale", "") else ""
+
     fig.update_layout(
         autosize=True,
         title=f"Dual Isotope Plot: {b_y.config.name} vs {b_x.config.name}",
-        xaxis_title=f"Normalized {b_x.config.target_column} (‰)",
-        yaxis_title=f"Normalized {b_y.config.target_column} (‰)",
+        xaxis_title=f"Normalized {b_x.config.target_column} (‰{scale_x})",
+        yaxis_title=f"Normalized {b_y.config.target_column} (‰{scale_y})",
         xaxis=dict(range=[x_min - x_pad, x_max + x_pad], autorange=False),
         yaxis=dict(range=[y_min - y_pad, y_max + y_pad], autorange=False),
         legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
@@ -795,6 +804,7 @@ def _extract_iso_info(batch) -> dict:
     """Extracts batch lineage metadata dictionary for dual-isotope template rendering."""
     return {
         "system_name": batch.config.name,
+        "scale_name": getattr(batch.config, "scale", ""),
         "filename": batch.filename,
         "filepath": batch.filepath,
         "acquisition_date": batch.acquisition_date,
@@ -812,12 +822,15 @@ def _extract_iso_info(batch) -> dict:
             if batch.excluded_rows_list
             else "None"
         ),
+        "memory_correction_applied": getattr(batch, "memory_correction_applied", False),
+        "memory_info": getattr(batch, "memory_info", None),
         "blank_correction_applied": batch.blank_correction_applied,
         "blank_info": batch.blank_info,
         "drift_correction_applied": batch.drift_correction_applied,
         "drift_monitor_used": (
             batch.drift_monitor_used if batch.drift_correction_applied else "None"
         ),
+        "drift_degree": getattr(batch, "drift_degree", 1),
         "drift_slope": getattr(batch, "drift_slope", None),
         "drift_ci95": getattr(batch, "drift_ci95", None),
         "drift_p_value": getattr(batch, "drift_p_value", None),
@@ -843,6 +856,32 @@ def _extract_iso_info(batch) -> dict:
     }
 
 
+def _compute_dual_derived_columns(
+    merged: pd.DataFrame, t1: str, t2: str, col1: str, col2: str
+) -> pd.DataFrame:
+    """Computes d-excess (for 2H/18O) or C/N ratios (when weight_pct_C & weight_pct_N are present)."""
+    if "2h" in t1.lower() and "18o" in t2.lower():
+        merged["d_excess"] = (merged[col1] - 8 * merged[col2]).round(2)
+        u_h = merged[f"combined_uncertainty_{t1}"]
+        u_o = merged[f"combined_uncertainty_{t2}"]
+        merged["u_d_excess"] = np.sqrt(u_h**2 + 64 * u_o**2).round(2)
+    elif "18o" in t1.lower() and "2h" in t2.lower():
+        merged["d_excess"] = (merged[col2] - 8 * merged[col1]).round(2)
+        u_h = merged[f"combined_uncertainty_{t2}"]
+        u_o = merged[f"combined_uncertainty_{t1}"]
+        merged["u_d_excess"] = np.sqrt(u_h**2 + 64 * u_o**2).round(2)
+
+    if "weight_pct_C" in merged.columns and "weight_pct_N" in merged.columns:
+        valid_n = merged["weight_pct_N"] > 0
+        cn_mass = np.where(
+            valid_n, merged["weight_pct_C"] / merged["weight_pct_N"], np.nan
+        )
+        merged["CN_mass_ratio"] = np.round(cn_mass, 2)
+        merged["CN_atomic_ratio"] = np.round(cn_mass * (14.0067 / 12.011), 2)
+
+    return merged
+
+
 def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
     batch1, batch2, filepath: str, title: str = "Dual Isotope Analytical Report"
 ):
@@ -853,7 +892,6 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("dual_isotope.html")
 
-    # Combine alerts
     alerts1 = batch1.alerts.to_dict("records") if not batch1.alerts.empty else []
     alerts2 = batch2.alerts.to_dict("records") if not batch2.alerts.empty else []
     for a in alerts1:
@@ -862,7 +900,6 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
         a["system"] = batch2.config.name
     combined_alerts = alerts1 + alerts2
 
-    # Combined Results Table
     if batch1.summary is not None and batch2.summary is not None:
         r1 = batch1.report.copy()
         r2 = batch2.report.copy()
@@ -874,18 +911,7 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
         merged = pd.merge(
             r1, r2, left_index=True, right_index=True, suffixes=(f"_{t1}", f"_{t2}")
         )
-
-        # Calculate d-excess if Water 2H & 18O
-        if "2h" in t1.lower() and "18o" in t2.lower():
-            merged["d_excess"] = (merged[col1] - 8 * merged[col2]).round(2)
-            u_h = merged[f"combined_uncertainty_{t1}"]
-            u_o = merged[f"combined_uncertainty_{t2}"]
-            merged["u_d_excess"] = np.sqrt(u_h**2 + 64 * u_o**2).round(2)
-        elif "18o" in t1.lower() and "2h" in t2.lower():
-            merged["d_excess"] = (merged[col2] - 8 * merged[col1]).round(2)
-            u_h = merged[f"combined_uncertainty_{t2}"]
-            u_o = merged[f"combined_uncertainty_{t1}"]
-            merged["u_d_excess"] = np.sqrt(u_h**2 + 64 * u_o**2).round(2)
+        merged = _compute_dual_derived_columns(merged, t1, t2, col1, col2)
 
         merged_df = merged.reset_index()
         merged_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
@@ -896,7 +922,6 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
             "to see combined results.</i></p>"
         )
 
-    # QAQC tables
     qaqc1 = batch1.qaqc
     qaqc2 = batch2.qaqc
 

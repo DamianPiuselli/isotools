@@ -293,7 +293,7 @@
 
     <div class="metadata">
         {% block metadata %}
-        <div class="metadata-item"><strong>Isotope System:</strong> {{ system_name if system_name else title }}</div>
+        <div class="metadata-item"><strong>Isotope System:</strong> {{ system_name if system_name else title }}{% if scale_name %} (vs. {{ scale_name }}){% endif %}</div>
         <div class="metadata-item"><strong>Source File:</strong> {{ filename if filename else (filepath if filepath else "Integrated Run") }}</div>
         <div class="metadata-item"><strong>Measurement Date:</strong> {{ acquisition_date if acquisition_date else "N/A" }}</div>
         <div class="metadata-item"><strong>Processing Date:</strong> {{ processing_date if processing_date else date }}</div>

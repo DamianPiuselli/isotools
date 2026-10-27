@@ -17,6 +17,7 @@ from scipy import stats as sp_stats
 
 from .config import SystemConfig
 from .utils.readers import IsodatReader
+from .utils.kragten import propagate_kragten
 from .models import ReferenceMaterial
 from .standards import get_standard
 from .strategies.abstract import CalibrationStrategy
@@ -30,7 +31,9 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
     Manages the lifecycle of data from Raw -> Cleaned -> Calibrated -> Reported.
     Enforces the canonical CF-IRMS order of operations:
-        0. Exclusions -> 1. Blank Correction -> 2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization
+        0. Exclusions -> 0b. Memory Correction -> 1. Blank Correction ->
+        2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization ->
+        4b. Elemental Composition Calibration
     """
 
     def __init__(self, filepath: str, config: SystemConfig, sheet_name: int | str = 0):
@@ -46,7 +49,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         self.filepath = filepath
 
         # 1. Load the Raw Data (Replicates Table)
-        # We add an 'excluded' flag column immediately
         reader = IsodatReader(config)
         self.replicates = reader.read(filepath, sheet_name=sheet_name)
         self.replicates["excluded"] = False
@@ -55,18 +57,25 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         self.replicates["working_value"] = self.replicates[config.target_column].copy()
 
         # 2. State Containers
-        self.anchors: Dict[str, ReferenceMaterial] = {}  # Used for calibration
-        self.controls: Dict[str, ReferenceMaterial] = {}  # Used for QC/Trueness
-        self.drift_monitors: Dict[str, ReferenceMaterial] = {}  # Used for Drift Check
+        self.anchors: Dict[str, ReferenceMaterial] = {}
+        self.controls: Dict[str, ReferenceMaterial] = {}
+        self.drift_monitors: Dict[str, ReferenceMaterial] = {}
 
-        # Blank correction state
+        # Stage 0b: Memory (carryover) correction state
+        self.memory_correction_applied: bool = False
+        self.memory_coefficients: Optional[List[float]] = None
+        self.memory_info: Optional[Dict] = None
+        self._memory_params: Optional[Dict] = None
+
+        # Stage 1: Blank correction state
         self.blank_correction_applied: bool = False
         self.blank_info: Optional[Dict] = None
         self._blank_params: Optional[Dict] = None
 
-        # Linearity correction state
+        # Stage 2: Linearity correction state
         self.linearity_correction_applied: bool = False
         self.linearity_slope: Optional[float] = None
+        self.linearity_std_err: Optional[float] = None
         self.linearity_ci95: Optional[float] = None
         self.linearity_p_value: Optional[float] = None
         self.linearity_r2: Optional[float] = None
@@ -77,15 +86,23 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         self.linearity_info: Optional[Dict] = None
         self._linearity_params: Optional[Dict] = None
 
-        # Drift correction state
+        # Stage 3: Drift correction state
         self.drift_correction_applied: bool = False
         self.drift_monitor_used: Optional[str] = None
+        self.drift_degree: int = 1
         self.drift_slope: Optional[float] = None
+        self.drift_std_err: Optional[float] = None
         self.drift_ci95: Optional[float] = None
         self.drift_p_value: Optional[float] = None
         self.drift_r2: Optional[float] = None
+        self.drift_poly_coeffs: Optional[List[float]] = None
         self.drift_info: Optional[Dict] = None
         self._drift_params: Optional[Dict] = None
+
+        # Stage 4b: Elemental composition calibration state
+        self.elemental_calibration_applied: bool = False
+        self.elemental_info: Optional[Dict] = None
+        self._elemental_params: Optional[Dict] = None
 
         # Processing & diagnostics state
         self.use_method_precision: bool = False
@@ -119,7 +136,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         if self.filepath:
             fname = os.path.basename(self.filepath)
-            # Try matching date patterns (DDMMYY, DDMMYYYY, YYYY-MM-DD, YYYYMMDD)
             m_dmy = re.search(r"(\d{2})(\d{2})(\d{2,4})", fname)
             if m_dmy:
                 d, m, y = m_dmy.groups()
@@ -162,14 +178,41 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         """Returns a table of flagged outliers and problematic data."""
         return self._alerts
 
+    def _check_extrapolation_alerts(self, valid: pd.DataFrame, norm_col: str) -> List[Dict]:
+        """Checks if normalized unknown samples fall outside the calibrated true span of anchors."""
+        extrap_alerts = []
+        if len(self.anchors) < 2 or norm_col not in valid.columns:
+            return extrap_alerts
+
+        anchor_trues = [std.d_true for std in self.anchors.values()]
+        a_min, a_max = min(anchor_trues), max(anchor_trues)
+
+        for _, row in valid.iterrows():
+            sname = row["sample_name"]
+            if self.get_canonical_name(sname, self.anchors):
+                continue
+            val = row[norm_col]
+            if pd.notna(val) and (val < a_min or val > a_max):
+                extrap_alerts.append(
+                    {
+                        "row": row.get("row", -1),
+                        "sample_name": sname,
+                        "reason": (
+                            f"Scale Extrapolation: Normalized value ({val:.2f} ‰) is outside "
+                            f"the calibrated anchor span [{a_min:.2f}, {a_max:.2f}] ‰."
+                        ),
+                    }
+                )
+        return extrap_alerts
+
     def detect_outliers(self):  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """
         Runs automatic diagnostics to identify suspicious data points.
 
         1. Missing Sample Peak / Autosampler Drop Failure Check.
         2. Double Drop / Abnormal Response Factor Check (Area/Amount).
-        3. Range Check: Outside expected environmental values (on normalized data).
-        4. Precision Check: Sample SD > 3x method precision (on working data).
+        3. Range Check & Anchor Extrapolation Check (on normalized data).
+        4. Precision Check (Sample SD > 3x method precision) with Instrument-Precision Flyer Pinpointing.
         5. Amplitude Check: Amplitude < 50% or > 200% of run median.
         6. Single Replicate Check (n=1): Fallback to instrumental method precision.
         """
@@ -231,7 +274,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                             }
                         )
 
-        # --- 1. Range Check (Normalized only) ---
+        # --- 1. Range Check & Anchor Extrapolation Check (Normalized only) ---
         norm_col = f"corrected_{self.config.target_column}"
         if norm_col in valid.columns:
             r_min, r_max = self.config.absolute_range
@@ -246,8 +289,16 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                         ),
                     }
                 )
+            alerts.extend(self._check_extrapolation_alerts(valid, norm_col))
 
-        # --- 2. Precision Check (Variance) ---
+        # --- 2. Precision Check (Variance) & Small-N Flyer Pinpointing ---
+        # Note: Classical parametric outlier tests (Grubbs', Dixon's Q) have poor statistical power
+        # at routine CF-IRMS replicate counts (n=2 to 4). Instead, we use the known instrumental
+        # method repeatability (sigma_method) as an external reference scale:
+        #   - For n >= 3, any replicate deviating from the group median by > 3*sigma_method
+        #     (and accounting for the majority of the group spread) is pinpointed as the suspected flyer.
+        #   - For n = 2, the median equals the mean so neither replicate can be distinguished without
+        #     an external check (amplitude/area), so both rows are flagged for review.
         if self.config.method_precision > 0:
             threshold = 3 * self.config.method_precision
             precision_stats = valid.groupby("sample_name")["working_value"].std().reset_index()
@@ -260,13 +311,24 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 val_std = precision_stats[precision_stats["sample_name"] == name][
                     "working_value"
                 ].values[0]
+
+                flyer_suffix = ""
+                if len(sample_rows) >= 3:
+                    med_val = sample_rows["working_value"].median()
+                    deviations = (sample_rows["working_value"] - med_val).abs()
+                    flyers = sample_rows[deviations > threshold]
+                    if not flyers.empty and "row" in flyers.columns:
+                        flyer_rows_str = ", ".join(str(int(r)) for r in flyers["row"].tolist())
+                        flyer_suffix = f" (Suspected flyer: Row {flyer_rows_str})"
+
                 for _, row in sample_rows.iterrows():
                     alerts.append(
                         {
                             "row": row.get("row", -1),
                             "sample_name": name,
                             "reason": (
-                                f"High Variance: SD ({val_std:.2f}) > 3x method precision ({threshold:.2f})"
+                                f"High Variance: SD ({val_std:.2f}) > 3x method precision "
+                                f"({threshold:.2f}){flyer_suffix}"
                             ),
                         }
                     )
@@ -343,17 +405,47 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         else:
             raise KeyError("Data does not contain 'row' column for exclusion.")
 
+    def exclude_first_injections(self, n_skip: int = 1):
+        """
+        Excludes the first `n_skip` injections of every contiguous vial/sample block
+        (ordered by injection 'row'), provided the block has more than `n_skip` injections.
+        Essential for liquid water IRMS runs where early injections suffer from memory carryover.
+
+        Args:
+            n_skip: Number of initial injections to exclude per contiguous sample block.
+        """
+        if n_skip < 1:
+            raise ValueError("n_skip must be >= 1.")
+
+        valid = self.replicates[~self.replicates["excluded"]].sort_values("row")
+        if valid.empty:
+            return
+
+        # Identify contiguous blocks where sample_name stays the same
+        block_ids = (valid["sample_name"] != valid["sample_name"].shift()).cumsum()
+        rows_to_exclude = []
+        for _, block in valid.groupby(block_ids):
+            if len(block) > n_skip:
+                rows_to_exclude.extend(block["row"].iloc[:n_skip].tolist())
+
+        if rows_to_exclude:
+            self.exclude_rows(rows_to_exclude)
+
     def _recompute_working_values(self):
         """
         Executes all active pre-calibration corrections in the strict CF-IRMS order of operations:
             0. Reset working_value from raw target_column
+            0b. Memory / Carryover Correction (Liquid Water)
             1. Blank Correction (Mass Balance)
             2. Linearity Correction (Peak Size / Signal Intensity)
             3. Drift Correction (Temporal / Sequence Position)
             4. Refresh diagnostics and invalidate calibration summary
         """
-        # 0. Start cleanly from raw measured delta values
         self.replicates["working_value"] = self.replicates[self.config.target_column].copy()
+
+        # 0b. Stage 0b: Sample-to-Sample Memory Correction
+        if self.memory_correction_applied and self._memory_params is not None:
+            self._execute_memory_stage(**self._memory_params)
 
         # 1. Stage 1: Mass-Balance Blank Correction
         if self.blank_correction_applied and self._blank_params:
@@ -409,6 +501,123 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 return std.name
         return None
 
+    # --- Stage 0b: Memory / Carryover Correction ---
+
+    def apply_memory_correction(
+        self, coefficients: Optional[List[float]] = None, max_injections: int = 3
+    ):
+        """
+        Applies sample-to-sample memory (carryover) correction across contiguous vial blocks
+        (Stage 0b of CF-IRMS pipeline, following Gröning 2011/2018 & van Geldern & Barth 2012).
+
+        Formula for injection j (0-indexed within new vial block i) following vial block i-1:
+            d_corr = d_meas + (m_j / (1 - m_j)) * (d_meas - d_prev_vial_final)
+
+        Args:
+            coefficients: List of memory fractions [m_1, m_2, ...] for the 1st, 2nd, ...
+                injections of each new vial block. If None, automatically estimated from
+                transitions between consecutive blocks with large isotopic step changes.
+            max_injections: Number of initial injections per block to estimate when
+                coefficients is None (default 3).
+        """
+        self._memory_params = {
+            "coefficients": coefficients,
+            "max_injections": max_injections,
+        }
+        self.memory_correction_applied = True
+        self._recompute_working_values()
+
+    def _estimate_memory_coefficients(
+        self, valid_sorted: pd.DataFrame, max_injections: int = 3
+    ) -> List[float]:
+        """
+        Estimates memory coefficients [m_1, m_2, ...] from contiguous vial transitions
+        where the step change |d_curr_final - d_prev_final| is significant (> 5 ‰)
+        and the block has at least max_injections + 1 replicates.
+        """
+        block_ids = (
+            valid_sorted["sample_name"] != valid_sorted["sample_name"].shift()
+        ).cumsum()
+        blocks = [group for _, group in valid_sorted.groupby(block_ids)]
+
+        coeff_samples: List[List[float]] = [[] for _ in range(max_injections)]
+        for idx in range(1, len(blocks)):
+            prev_blk = blocks[idx - 1]
+            curr_blk = blocks[idx]
+            if len(curr_blk) <= max_injections:
+                continue
+
+            # Asymptotic true/final value of previous and current blocks (mean of last 2 injections)
+            prev_final = float(prev_blk["working_value"].iloc[-2:].mean())
+            curr_final = float(curr_blk["working_value"].iloc[-2:].mean())
+            step = curr_final - prev_final
+            if abs(step) < 5.0:
+                continue
+
+            for j in range(max_injections):
+                meas_j = float(curr_blk["working_value"].iloc[j])
+                # m_j = (curr_final - meas_j) / (curr_final - prev_final)
+                m_j = (curr_final - meas_j) / step
+                if 0.0 <= m_j < 0.8:
+                    coeff_samples[j].append(m_j)
+
+        estimated = []
+        for j in range(max_injections):
+            if coeff_samples[j]:
+                estimated.append(round(float(np.median(coeff_samples[j])), 4))
+            else:
+                estimated.append(0.0)
+        return estimated
+
+    def _execute_memory_stage(
+        self, coefficients: Optional[List[float]] = None, max_injections: int = 3
+    ):
+        """Internal execution of Stage 0b (Memory Correction) on raw working_value."""
+        valid_mask = ~self.replicates["excluded"]
+        valid_sorted = self.replicates[valid_mask].sort_values("row").copy()
+
+        if valid_sorted.empty:
+            return
+
+        is_auto = coefficients is None
+        if is_auto:
+            coeffs = self._estimate_memory_coefficients(valid_sorted, max_injections)
+        else:
+            coeffs = [float(c) for c in coefficients]
+
+        block_ids = (
+            valid_sorted["sample_name"] != valid_sorted["sample_name"].shift()
+        ).cumsum()
+        blocks = [(blk_id, group) for blk_id, group in valid_sorted.groupby(block_ids)]
+
+        d_mem_series = self.replicates["working_value"].copy()
+        prev_final: Optional[float] = None
+
+        for _, grp in blocks:
+            # Asymptotic final value of this block (mean of trailing replicates)
+            tail_count = min(2, len(grp))
+            curr_final = float(grp["working_value"].iloc[-tail_count:].mean())
+
+            if prev_final is not None:
+                for j, (row_idx, row_data) in enumerate(grp.iterrows()):
+                    if j < len(coeffs) and 0.0 < coeffs[j] < 1.0:
+                        m_j = coeffs[j]
+                        d_meas = float(row_data["working_value"])
+                        d_corr = d_meas + (m_j / (1.0 - m_j)) * (d_meas - prev_final)
+                        d_mem_series.loc[row_idx] = d_corr
+
+            prev_final = curr_final
+
+        self.replicates["d_memory_corrected"] = d_mem_series
+        self.replicates["working_value"] = d_mem_series
+        self.memory_coefficients = coeffs
+        self.memory_info = {
+            "coefficients": coeffs,
+            "source": "Auto-Estimated from Sequence Step Transitions"
+            if is_auto
+            else "Manual Coefficients",
+        }
+
     # --- Stage 1: Blank Correction ---
 
     def _find_preferred_area_column(self, df: pd.DataFrame) -> Optional[str]:
@@ -448,7 +657,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
     def _execute_blank_stage(
         self, blank_identifier: str = "bco cap", area_column: Optional[str] = None
     ):
-        """Internal execution of Stage 1 (Blank Correction) on raw target values."""
+        """Internal execution of Stage 1 (Blank Correction)."""
         valid = self.replicates[~self.replicates["excluded"]].copy()
 
         blank_mask = (
@@ -471,10 +680,14 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             self._blank_params = None
             raise KeyError("Could not auto-detect a valid 'area' column for blank correction.")
 
+        n_blk = len(blank_rows)
         a_blk = float(blank_rows[area_column].mean())
-        a_blk_std = float(blank_rows[area_column].std()) if len(blank_rows) > 1 else 0.0
+        a_blk_std = float(blank_rows[area_column].std()) if n_blk > 1 else 0.0
+        a_blk_sem = a_blk_std / np.sqrt(n_blk) if n_blk > 1 else 0.0
+
         d_blk = float(blank_rows["working_value"].mean())
-        d_blk_std = float(blank_rows["working_value"].std()) if len(blank_rows) > 1 else 0.0
+        d_blk_std = float(blank_rows["working_value"].std()) if n_blk > 1 else 0.0
+        d_blk_sem = d_blk_std / np.sqrt(n_blk) if n_blk > 1 else 0.0
 
         a_raw = self.replicates[area_column]
         d_raw = self.replicates["working_value"]
@@ -491,8 +704,11 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             "area_column": area_column,
             "mean_area": a_blk,
             "std_area": a_blk_std,
+            "sem_area": float(a_blk_sem),
             "mean_delta": d_blk,
             "std_delta": d_blk_std,
+            "sem_delta": float(d_blk_sem),
+            "n": n_blk,
         }
 
     # --- Stage 2: Linearity Analysis & Correction ---
@@ -539,6 +755,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         Calculates:
         - Slope (delta per area/amplitude unit)
+        - Std_Err (1-sigma standard error of the slope)
         - CI_95 (95% Confidence Interval for slope)
         - p_value and R_squared
 
@@ -559,6 +776,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         if substance_name:
             combined_reg = {**self.anchors, **self.controls, **self.drift_monitors}
             sub_canonical = self.get_canonical_name(substance_name, combined_reg)
+            std_obj = None
             if not sub_canonical:
                 std_obj = get_standard(substance_name, target_column=self.config.target_column)
                 sub_canonical = std_obj.name if std_obj else substance_name
@@ -579,7 +797,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         if filtered.empty:
             return pd.DataFrame(
-                columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"]
+                columns=["Slope", "Std_Err", "CI_95", "p_value", "R_squared", "n", "Mean_Area"]
             )
 
         results = []
@@ -603,6 +821,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 {
                     "Substance": name,
                     "Slope": slope,
+                    "Std_Err": float(std_err) if not np.isnan(std_err) else 0.0,
                     "CI_95": ci_95,
                     "p_value": p_value,
                     "R_squared": r_value**2,
@@ -613,7 +832,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         if not results:
             return pd.DataFrame(
-                columns=["Slope", "CI_95", "p_value", "R_squared", "n", "Mean_Area"]
+                columns=["Slope", "Std_Err", "CI_95", "p_value", "R_squared", "n", "Mean_Area"]
             )
 
         return pd.DataFrame(results).set_index("Substance")
@@ -630,12 +849,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         Formula:
             working_value = working_value - slope * (area - area_ref)
-
-        Args:
-            slope: Direct slope (delta unit per area unit). If None, inferred from substance_name.
-            substance_name: Standard/sample name used to infer slope if slope is None.
-            area_ref: Reference area value. If None, defaults to median area of valid replicates.
-            area_column: Specific column name for signal area/amplitude. Auto-detected if None.
         """
         if slope is None and not substance_name:
             raise ValueError(
@@ -661,11 +874,11 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         """Internal execution of Stage 2 (Linearity Correction) on post-blank working_value."""
         area_col = self.detect_area_column(area_column)
 
-        # Store pre-linearity working value (which is post-blank if blank correction is active)
         self.replicates["pre_linearity_working_value"] = self.replicates[
             "working_value"
         ].copy()
 
+        std_err = 0.0
         ci_95 = None
         p_val = None
         r2 = None
@@ -690,6 +903,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 )
             matched_name = stats.index[0]
             slope = float(stats.loc[matched_name, "Slope"])
+            std_err = float(stats.loc[matched_name, "Std_Err"])
             ci_95 = float(stats.loc[matched_name, "CI_95"])
             p_val = float(stats.loc[matched_name, "p_value"])
             r2 = float(stats.loc[matched_name, "R_squared"])
@@ -701,6 +915,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             )
             if not stats.empty:
                 matched_name = stats.index[0]
+                std_err = float(stats.loc[matched_name, "Std_Err"])
                 ci_95 = float(stats.loc[matched_name, "CI_95"])
                 p_val = float(stats.loc[matched_name, "p_value"])
                 r2 = float(stats.loc[matched_name, "R_squared"])
@@ -715,8 +930,8 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         self.replicates["d_linearity_corrected"] = d_lin
         self.replicates["working_value"] = d_lin
 
-        # Record attributes
         self.linearity_slope = slope
+        self.linearity_std_err = std_err
         self.linearity_ci95 = ci_95
         self.linearity_p_value = p_val
         self.linearity_r2 = r2
@@ -726,6 +941,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         self.linearity_source = source_str
         self.linearity_info = {
             "slope": slope,
+            "std_err": std_err,
             "ci_95": ci_95,
             "p_value": p_val,
             "r_squared": r2,
@@ -740,8 +956,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
     def _get_pre_drift_column(self) -> str:
         """
-        Returns the column representing the data state immediately prior to drift correction
-        (i.e. post-blank and post-linearity if those stages were applied, otherwise raw target).
+        Returns the column representing the data state immediately prior to drift correction.
         """
         if "pre_drift_working_value" in self.replicates.columns:
             return "pre_drift_working_value"
@@ -752,6 +967,8 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             return "d_linearity_corrected"
         if self.blank_correction_applied and "d_blank_corrected" in self.replicates.columns:
             return "d_blank_corrected"
+        if self.memory_correction_applied and "d_memory_corrected" in self.replicates.columns:
+            return "d_memory_corrected"
         return self.config.target_column
 
     def check_drift(
@@ -760,14 +977,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         """
         Calculates linear regression (Target vs Row) for all drift monitors.
 
-        Returns a summary of slopes, p-values, and 95% Confidence Intervals.
-
-        Args:
-            use_working: If True, uses the current 'working_value' (which might be
-                already drift-corrected). If False (default), evaluates drift on the
-                pre-drift state (incorporating blank/linearity corrections if active,
-                or raw target values otherwise).
-            target_col_override: Optional explicit column name to evaluate.
+        Returns a summary of slopes, standard errors, p-values, and 95% Confidence Intervals.
         """
         if not self.drift_monitors:
             raise ValueError("No drift monitors set. Use set_drift_monitors() first.")
@@ -796,7 +1006,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
             slope, _, r_value, p_value, std_err = sp_stats.linregress(x, y)
 
-            # 95% CI for the slope: slope +/- t_crit * std_err
             df_deg = len(x) - 2
             t_crit = sp_stats.t.ppf(0.975, df_deg)
             ci_95 = t_crit * std_err
@@ -805,6 +1014,7 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 {
                     "Standard": name,
                     "Slope": slope,
+                    "Std_Err": float(std_err) if not np.isnan(std_err) else 0.0,
                     "CI_95": ci_95,
                     "p_value": p_value,
                     "R_squared": r_value**2,
@@ -813,7 +1023,9 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             )
 
         if not results:
-            return pd.DataFrame(columns=["Slope", "CI_95", "p_value", "R_squared", "n"])
+            return pd.DataFrame(
+                columns=["Slope", "Std_Err", "CI_95", "p_value", "R_squared", "n"]
+            )
 
         return pd.DataFrame(results).set_index("Standard")
 
@@ -890,18 +1102,23 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         return ax
 
-    def apply_drift_correction(self, monitor_name: str):
+    def apply_drift_correction(self, monitor_name: str, degree: int = 1):
         """
-        Applies a linear drift correction to the working data based on the specified monitor
-        (Stage 3 of CF-IRMS pipeline, executed after Blank and Linearity corrections).
+        Applies a linear (degree=1) or polynomial (degree>=2) drift correction to the working
+        data based on the specified monitor (Stage 3 of CF-IRMS pipeline).
 
-        Formula: working_value = pre_drift_working_value - (slope * row)
+        Args:
+            monitor_name: Name or alias of the drift monitor standard.
+            degree: Polynomial degree for drift modeling (1 = linear, 2 = quadratic, etc.).
         """
-        self._drift_params = {"monitor_name": monitor_name}
+        if degree < 1:
+            raise ValueError("Drift polynomial degree must be >= 1.")
+
+        self._drift_params = {"monitor_name": monitor_name, "degree": degree}
         self.drift_correction_applied = True
         self._recompute_working_values()
 
-    def _execute_drift_stage(self, monitor_name: str):
+    def _execute_drift_stage(self, monitor_name: str, degree: int = 1):
         """Internal execution of Stage 3 (Drift Correction) on post-blank/post-linearity working_value."""
         self.replicates["pre_drift_working_value"] = self.replicates["working_value"].copy()
 
@@ -920,35 +1137,205 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 )
 
         slope = float(drift_stats.loc[resolved_monitor, "Slope"])
+        std_err = float(drift_stats.loc[resolved_monitor, "Std_Err"])
         ci_95 = float(drift_stats.loc[resolved_monitor, "CI_95"])
         p_val = float(drift_stats.loc[resolved_monitor, "p_value"])
         r2 = float(drift_stats.loc[resolved_monitor, "R_squared"])
 
-        d_drift = self.replicates["pre_drift_working_value"] - (
-            slope * self.replicates["row"]
-        )
+        if degree == 1:
+            d_drift = self.replicates["pre_drift_working_value"] - (
+                slope * self.replicates["row"]
+            )
+            poly_coeffs = [slope, 0.0]
+        else:
+            valid = self.replicates[~self.replicates["excluded"]]
+            mon_rows = valid[
+                valid["sample_name"].apply(
+                    lambda x: self.get_canonical_name(x, self.drift_monitors) == resolved_monitor
+                )
+            ]
+            if len(mon_rows) <= degree:
+                raise ValueError(
+                    f"Insufficient monitor replicates ({len(mon_rows)}) for degree={degree} polynomial drift."
+                )
+            x_mon = mon_rows["row"].values.astype(float)
+            y_mon = mon_rows["pre_drift_working_value"].values.astype(float)
+            coeffs = np.polyfit(x_mon, y_mon, degree)
+            poly_coeffs = [float(c) for c in coeffs]
+
+            # Evaluate polynomial drift relative to sequence start/intercept (constant term coeffs[-1])
+            poly_trend = np.polyval(coeffs, self.replicates["row"].values.astype(float)) - coeffs[-1]
+            d_drift = self.replicates["pre_drift_working_value"] - poly_trend
+
+            # Compute polynomial R^2
+            y_hat = np.polyval(coeffs, x_mon)
+            ss_res = np.sum((y_mon - y_hat) ** 2)
+            ss_tot = np.sum((y_mon - np.mean(y_mon)) ** 2)
+            r2 = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 1.0
+
         self.replicates["d_drift_corrected"] = d_drift
         self.replicates["working_value"] = d_drift
 
-        # Record correction metadata
         self.drift_monitor_used = resolved_monitor
+        self.drift_degree = degree
         self.drift_slope = slope
+        self.drift_std_err = std_err
         self.drift_ci95 = ci_95
         self.drift_p_value = p_val
         self.drift_r2 = r2
+        self.drift_poly_coeffs = poly_coeffs
         self.drift_info = {
             "monitor": resolved_monitor,
+            "degree": degree,
             "slope": slope,
+            "std_err": std_err,
             "ci_95": ci_95,
             "p_value": p_val,
             "r_squared": r2,
+            "poly_coeffs": poly_coeffs,
         }
+
+    # --- Stage 4b: Elemental Mass Fraction (%C, %N) Calibration ---
+
+    def calibrate_elemental_composition(
+        self,
+        standards: Optional[Dict[str, float]] = None,
+        area_column: Optional[str] = None,
+    ):
+        """
+        Calibrates elemental weight percent (%C, %N) using sample weights ('amount')
+        and peak areas against reference standards with known mass fractions.
+
+        Args:
+            standards: Optional dictionary mapping standard name -> weight percent (e.g. {"ac benzoico": 68.85}).
+                       If None, uses `mass_fraction` from registered anchors/controls or default standards.
+            area_column: Optional area column name. Defaults to 'area_net' if blank-corrected,
+                         else auto-detected area column.
+        """
+        self._elemental_params = {
+            "standards": standards,
+            "area_column": area_column,
+        }
+        self.elemental_calibration_applied = True
+        self._execute_elemental_stage(standards=standards, area_column=area_column)
+        if self.summary is not None:
+            self._attach_elemental_to_summary()
+
+    def _execute_elemental_stage(  # pylint: disable=too-many-locals
+        self,
+        standards: Optional[Dict[str, float]] = None,
+        area_column: Optional[str] = None,
+    ):
+        """Internal execution of elemental weight percent calibration."""
+        if "amount" not in self.replicates.columns:
+            self.elemental_calibration_applied = False
+            raise KeyError("Data does not contain 'amount' (sample weight) column.")
+
+        if area_column is None:
+            if self.blank_correction_applied and "area_net" in self.replicates.columns:
+                area_col = "area_net"
+            else:
+                area_col = self.detect_area_column()
+        else:
+            area_col = area_column
+
+        valid = self.replicates[~self.replicates["excluded"]].copy()
+        weighed = valid[
+            valid["amount"].notna() & (valid["amount"] > 0) & valid[area_col].notna()
+        ].copy()
+
+        if weighed.empty:
+            self.elemental_calibration_applied = False
+            raise ValueError("No valid weighed rows with positive 'amount' and peak area.")
+
+        # Resolve known mass fractions for standards in the run
+        def lookup_mass_fraction(sname: str) -> Optional[float]:
+            if standards:
+                for k, v in standards.items():
+                    if k.strip().lower() == sname.strip().lower() or k.strip().lower() in sname.strip().lower():
+                        return float(v)
+            combined_reg = {**self.anchors, **self.controls, **self.drift_monitors}
+            can = self.get_canonical_name(sname, combined_reg)
+            if can and combined_reg[can].mass_fraction is not None:
+                return float(combined_reg[can].mass_fraction)
+            std_obj = get_standard(sname, target_column=self.config.target_column)
+            if std_obj and std_obj.mass_fraction is not None:
+                return float(std_obj.mass_fraction)
+            return None
+
+        weighed["known_mass_pct"] = weighed["sample_name"].apply(lookup_mass_fraction)
+        cal_rows = weighed[weighed["known_mass_pct"].notna()].copy()
+
+        if cal_rows.empty:
+            self.elemental_calibration_applied = False
+            raise ValueError(
+                "No standards with known elemental mass_fraction found in weighed replicates."
+            )
+
+        # Elemental mass in standards: M_elem = amount * (mass_pct / 100.0)
+        cal_rows["elem_mass"] = cal_rows["amount"] * (cal_rows["known_mass_pct"] / 100.0)
+
+        # Response factor k = sum(area * elem_mass) / sum(area^2) (linear through origin)
+        areas_std = cal_rows[area_col].values.astype(float)
+        masses_std = cal_rows["elem_mass"].values.astype(float)
+        k_factor = float(np.sum(areas_std * masses_std) / np.sum(areas_std**2))
+
+        # Relative standard error of k_factor across calibration replicates
+        indiv_k = masses_std / areas_std
+        rel_u_k = (
+            float(np.std(indiv_k, ddof=1) / (np.sqrt(len(indiv_k)) * k_factor))
+            if len(indiv_k) > 1 and k_factor > 0
+            else 0.01
+        )
+
+        elem_sym = self.config.element_symbol or "Element"
+        pct_col = f"weight_pct_{elem_sym}"
+
+        # Calculate elemental weight percent for all weighed rows
+        valid_amt = self.replicates["amount"] > 0
+        est_mass = self.replicates[area_col] * k_factor
+        self.replicates[pct_col] = np.where(
+            valid_amt, (est_mass / self.replicates["amount"]) * 100.0, np.nan
+        )
+
+        self.elemental_info = {
+            "element_symbol": elem_sym,
+            "pct_column": pct_col,
+            "area_column": area_col,
+            "k_factor": k_factor,
+            "rel_u_k": rel_u_k,
+            "n_standards": len(cal_rows),
+        }
+
+    def _attach_elemental_to_summary(self):
+        """Aggregates elemental weight percent into self.summary if elemental calibration is active."""
+        if not self.elemental_calibration_applied or not self.elemental_info or self.summary is None:
+            return
+
+        pct_col = self.elemental_info["pct_column"]
+        u_pct_col = f"u_{pct_col}"
+        rel_u_k = self.elemental_info["rel_u_k"]
+
+        if pct_col not in self.replicates.columns:
+            return
+
+        summary_data = self.replicates[~self.replicates["excluded"]].copy()
+        summary_data["group_name"] = summary_data["sample_name"].apply(self._get_group_name)
+
+        elem_agg = summary_data.groupby("group_name")[pct_col].agg(["mean", "sem"])
+        self.summary[pct_col] = elem_agg["mean"]
+        # Combine replicate SEM and calibration response factor uncertainty in quadrature
+        sem_filled = elem_agg["sem"].fillna(0.0)
+        u_cal = elem_agg["mean"].abs() * rel_u_k
+        self.summary[u_pct_col] = np.sqrt(sem_filled**2 + u_cal**2)
 
     # --- Stage 4: Calibration & Uncertainty Propagation ---
 
     def _get_working_value_label(self) -> str:
         """Returns a descriptive y-axis label reflecting active pre-calibration corrections."""
         active = []
+        if self.memory_correction_applied:
+            active.append("Memory")
         if self.blank_correction_applied:
             active.append("Blank")
         if self.linearity_correction_applied:
@@ -969,7 +1356,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
 
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
 
-        # 1. Filter for Anchors and add True Values
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self.get_canonical_name(x, self.anchors)
         )
@@ -986,7 +1372,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         if ax is None:
             _, ax = plt.subplots(figsize=(8, 6))
 
-        # 2. Scatter Individual Replicates (True on X, Measured on Y)
         sns.scatterplot(
             data=anchor_data,
             x="d_true",
@@ -998,7 +1383,6 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             zorder=3,
         )
 
-        # 3. Draw the Calibration Line (Instrument Fit: Raw = m * True + b)
         t_min, t_max = anchor_data["d_true"].min(), anchor_data["d_true"].max()
         pad = (t_max - t_min) * 0.1 if t_max != t_min else 1.0
         t_line = np.linspace(t_min - pad, t_max + pad, 100)
@@ -1031,44 +1415,116 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             verticalalignment="top",
         )
 
+        scale_suffix = f" vs. {self.config.scale}" if self.config.scale else ""
         ax.set_title(f"Calibration Curve: {self.config.name}", fontsize=12, fontweight="bold")
-        ax.set_xlabel("Reference Value (True)", fontsize=10)
+        ax.set_xlabel(f"Reference Value (True{scale_suffix})", fontsize=10)
         ax.set_ylabel(self._get_working_value_label(), fontsize=10)
         ax.legend(loc="lower right")
         ax.grid(True, linestyle=":", alpha=0.6)
 
         return ax
 
+    def _get_group_name(self, raw_name: str) -> str:
+        """Maps raw sample names to canonical anchor/control names, or preserves unknown sample names."""
+        can_name = self.get_canonical_name(raw_name, self.anchors)
+        if can_name:
+            return can_name
+        can_name = self.get_canonical_name(raw_name, self.controls)
+        if can_name:
+            return can_name
+        return raw_name
+
+    def _compute_precalibration_uncertainties(
+        self, summary_data: pd.DataFrame, anchor_rows: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Computes sample-level pre-calibration standard uncertainties (u_blank, u_linearity, u_drift)
+        on the working scale for each group in self.summary.
+        """
+        groups = summary_data.groupby("group_name")
+        u_blank_map = {}
+        u_lin_map = {}
+        u_drift_map = {}
+
+        mean_anchor_row = (
+            float(anchor_rows["row"].mean()) if not anchor_rows.empty else 0.0
+        )
+
+        for gname, grp in groups:
+            # 1. Blank uncertainty via Kragten mass-balance perturbation
+            u_b = 0.0
+            if self.blank_correction_applied and self.blank_info:
+                area_col = self.blank_info["area_column"]
+                a_blk = self.blank_info["mean_area"]
+                u_a_blk = self.blank_info.get("sem_area", 0.0)
+                d_blk = self.blank_info["mean_delta"]
+                u_d_blk = self.blank_info.get("sem_delta", 0.0)
+
+                if area_col in grp.columns and (u_a_blk > 0 or u_d_blk > 0):
+                    a_raw_mean = float(grp[area_col].mean())
+                    d_raw_mean = float(grp[self.config.target_column].mean())
+                    if a_raw_mean > a_blk:
+                        def blank_model(args, a_s=a_raw_mean, d_s=d_raw_mean):
+                            ab, db = args
+                            return (a_s * d_s - ab * db) / (a_s - ab)
+
+                        _, u_b = propagate_kragten(
+                            blank_model, [a_blk, d_blk], [u_a_blk, u_d_blk]
+                        )
+            u_blank_map[gname] = float(u_b)
+
+            # 2. Linearity slope uncertainty: |A_samp - A_ref| * u(m_lin)
+            u_l = 0.0
+            if (
+                self.linearity_correction_applied
+                and self.linearity_std_err
+                and self.linearity_info
+            ):
+                area_col = self.linearity_info["area_column"]
+                area_ref = self.linearity_area_ref or 0.0
+                if area_col in grp.columns:
+                    a_samp = float(grp[area_col].mean())
+                    u_l = abs(a_samp - area_ref) * float(self.linearity_std_err)
+            u_lin_map[gname] = float(u_l)
+
+            # 3. Drift slope uncertainty: |row_samp - row_anchors| * u(m_drift)
+            u_d = 0.0
+            if self.drift_correction_applied and self.drift_std_err and "row" in grp.columns:
+                r_samp = float(grp["row"].mean())
+                u_d = abs(r_samp - mean_anchor_row) * float(self.drift_std_err)
+            u_drift_map[gname] = float(u_d)
+
+        self.summary["u_blank"] = pd.Series(u_blank_map)
+        self.summary["u_linearity"] = pd.Series(u_lin_map)
+        self.summary["u_drift"] = pd.Series(u_drift_map)
+        return self.summary
+
     def process(self, strategy: CalibrationStrategy, use_method_precision: bool = False):
         """
         The Main Pipeline:
 
-        0. Ensure pre-calibration corrections (Blank -> Linearity -> Drift) are up to date
+        0. Ensure pre-calibration corrections (Memory -> Blank -> Linearity -> Drift) are up to date
         1. Run Diagnostics (Detect Outliers)
         2. Prepare Anchor Stats for fitting
         3. Fit Strategy (using Anchors from working_value)
         4. Correct Replicates (Row-by-Row)
-        5. Aggregate to Summary (Sample-Level)
-        6. Propagate Uncertainty (Kragten)
-        7. Refresh Diagnostics (Including Range Checks)
+        5. Aggregate to Summary (Sample-Level) & Compute Pre-Calibration Uncertainties
+        6. Propagate Full Uncertainty & Variance Budget (Kragten)
+        7. Attach Elemental Composition (if active) & Refresh Diagnostics
         """
         self.strategy = strategy
         self.use_method_precision = use_method_precision
 
-        # Ensure canonical correction pipeline is freshly computed
         self._recompute_working_values()
 
-        # A. Warn if pre-calibration diagnostics found suspicious points
         if not self._alerts.empty:
             warnings.warn(
                 f"Detected {len(self._alerts)} suspicious data points. "
                 "Check the .alerts property for details."
             )
 
-        # B. Filter valid data for calculation
         valid_data = self.replicates[~self.replicates["excluded"]].copy()
 
-        # C. Prepare Anchor Stats for Fitting
         valid_data["canonical_name"] = valid_data["sample_name"].apply(
             lambda x: self.get_canonical_name(x, self.anchors)
         )
@@ -1077,12 +1533,10 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         if anchor_rows.empty:
             raise ValueError("No rows matched the provided Anchor Standards.")
 
-        # Use working_value for fitting
         anchor_stats = anchor_rows.groupby("canonical_name")["working_value"].agg(
             ["mean", "sem", "count"]
         )
 
-        # Optional Precision Override: use sigma / sqrt(n)
         prec = self.config.method_precision if self.config.method_precision > 0 else 0.10
         if use_method_precision:
             anchor_stats["sem"] = prec / np.sqrt(anchor_stats["count"])
@@ -1091,10 +1545,8 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 prec / np.sqrt(anchor_stats["count"])
             )
 
-        # D. Fit the Strategy
         strategy.fit(anchor_stats, self.anchors)
 
-        # E. Apply to Replicates (Vectorized)
         target_col = self.config.target_column
         norm_col = f"corrected_{target_col}"
         if norm_col in self.replicates.columns:
@@ -1105,19 +1557,8 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             columns={"corrected_working_value": norm_col}
         )
 
-        # F. Aggregate to Summary (Sample Level)
         summary_data = self.replicates[~self.replicates["excluded"]].copy()
-
-        def get_group_name(raw_name):
-            can_name = self.get_canonical_name(raw_name, self.anchors)
-            if can_name:
-                return can_name
-            can_name = self.get_canonical_name(raw_name, self.controls)
-            if can_name:
-                return can_name
-            return raw_name
-
-        summary_data["group_name"] = summary_data["sample_name"].apply(get_group_name)
+        summary_data["group_name"] = summary_data["sample_name"].apply(self._get_group_name)
 
         self.summary = summary_data.groupby("group_name")["working_value"].agg(
             ["mean", "sem", "count"]
@@ -1130,10 +1571,18 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
                 prec / np.sqrt(self.summary["count"])
             )
 
-        # G. Propagate Uncertainty (Sample Level)
+        # Compute pre-calibration uncertainty terms (u_blank, u_linearity, u_drift)
+        self._compute_precalibration_uncertainties(summary_data, anchor_rows)
+
+        # Propagate full uncertainty & variance budget
         self.summary = strategy.propagate(self.summary, self.config.target_column)
 
-        # H. Refresh Diagnostics (Now including Range Checks on normalized data)
+        # If elemental calibration was configured, attach elemental % columns
+        if self.elemental_calibration_applied and self._elemental_params is not None:
+            self._execute_elemental_stage(**self._elemental_params)
+            self._attach_elemental_to_summary()
+
+        # Refresh Diagnostics (Now including Range & Extrapolation Checks on normalized data)
         self.detect_outliers()
         if not self._alerts.empty:
             warnings.warn(
@@ -1154,27 +1603,67 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
             "combined_uncertainty",
             "count",
         ]
+        if self.elemental_calibration_applied and self.elemental_info:
+            pct_col = self.elemental_info["pct_column"]
+            u_pct_col = f"u_{pct_col}"
+            if pct_col in self.summary.columns:
+                cols.extend([pct_col, u_pct_col])
+
         return self.summary[cols].round(2)
 
     @property
+    def uncertainty_budget(self) -> pd.DataFrame:
+        """
+        Returns the detailed ISO 17025 uncertainty budget table showing the combined
+        1-sigma uncertainty and the percentage variance contribution of each source:
+        - pct_measurement (replicate repeatability / method precision)
+        - pct_anchors (anchor measurement SEMs + certificate uncertainties)
+        - pct_fit_residual (OLS regression residual scatter for 3+ anchors)
+        - pct_blank (mass-balance blank area & delta uncertainties)
+        - pct_linearity (linearity slope uncertainty)
+        - pct_drift (drift slope uncertainty)
+        """
+        if self.summary is None:
+            raise RuntimeError("Run .process() before requesting the uncertainty budget.")
+
+        budget_cols = [
+            "combined_uncertainty",
+            "pct_measurement",
+            "pct_anchors",
+            "pct_fit_residual",
+            "pct_blank",
+            "pct_linearity",
+            "pct_drift",
+        ]
+        available = [c for c in budget_cols if c in self.summary.columns]
+        return self.summary[available].round(2)
+
+    @property
     def qaqc(self) -> pd.DataFrame:
-        """Returns trueness report for the Control standards."""
+        """
+        Returns trueness report for the Control standards, including ISO Guide 33
+        normalized error (En_Score) accounting for both measurement and certificate uncertainty:
+            En_Score = |Bias| / (2 * sqrt(u_combined^2 + u_true^2))
+        """
         if self.summary is None:
             raise RuntimeError("Run .process() before requesting QAQC.")
 
         qc_rows = []
+        target_col = f"corrected_{self.config.target_column}"
         for sample_name in self.summary.index:
             canonical_name = self.get_canonical_name(sample_name, self.controls)
             if canonical_name:
                 std_obj = self.controls[canonical_name]
                 row = self.summary.loc[sample_name].copy()
                 row["True_Value"] = std_obj.d_true
-                row["Bias"] = (
-                    row[f"corrected_{self.config.target_column}"] - std_obj.d_true
+                row["u_True"] = std_obj.u_true
+                row["Bias"] = row[target_col] - std_obj.d_true
+                u_bias = float(
+                    np.sqrt(row["combined_uncertainty"] ** 2 + std_obj.u_true**2)
                 )
-                row["Within_Unc"] = abs(row["Bias"]) < (
-                    2 * row["combined_uncertainty"]
-                )
+                en_score = abs(row["Bias"]) / (2.0 * u_bias) if u_bias > 0 else 0.0
+                row["En_Score"] = en_score
+                row["Within_Unc"] = bool(en_score <= 1.0)
                 qc_rows.append(row)
 
         if not qc_rows:
@@ -1183,18 +1672,28 @@ class Batch:  # pylint: disable=too-many-instance-attributes,too-many-public-met
         df_qc = pd.DataFrame(qc_rows)[
             [
                 "True_Value",
-                f"corrected_{self.config.target_column}",
+                "u_True",
+                target_col,
+                "combined_uncertainty",
                 "Bias",
+                "En_Score",
                 "Within_Unc",
             ]
         ]
-        num_cols = ["True_Value", f"corrected_{self.config.target_column}", "Bias"]
+        num_cols = [
+            "True_Value",
+            "u_True",
+            target_col,
+            "combined_uncertainty",
+            "Bias",
+            "En_Score",
+        ]
         df_qc[num_cols] = df_qc[num_cols].round(2)
         return df_qc
 
     def save_report(self, filepath: str):
         """
-        Exports the Results and QAQC tables to a multi-sheet Excel file.
+        Exports the Results, QAQC, Uncertainty_Budget, and Parameters tables to an Excel file.
         """
         export_batch_to_excel(self, filepath)
 
