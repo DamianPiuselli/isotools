@@ -24,6 +24,10 @@ class SystemConfig:
     absolute_range: tuple[float, float] = (-2000.0, 2000.0)
     # The column used for signal intensity/amplitude (e.g. amp_28, amp_2)
     amplitude_column: str = ""
+    # International reference scale (e.g., "VSMOW-SLAP", "VPDB", "AIR-N2")
+    scale: str = ""
+    # Chemical symbol of the element (e.g., "H", "O", "C", "N")
+    element_symbol: str = ""
 
 
 # --- Logic Helpers ---
@@ -122,6 +126,8 @@ NITROGEN = SystemConfig(
     method_precision=0.15,
     amplitude_column="amp_28",
     absolute_range=(-20.0, 50.0),
+    scale="AIR-N2",
+    element_symbol="N",
 )
 
 
@@ -133,6 +139,8 @@ WATER_H = SystemConfig(
     method_precision=1.4,
     amplitude_column="amp_2",
     absolute_range=(-400.0, 50.0),  # Maximum expected range in natural water samples
+    scale="VSMOW-SLAP",
+    element_symbol="H",
 )
 
 WATER_O = SystemConfig(
@@ -143,6 +151,8 @@ WATER_O = SystemConfig(
     method_precision=0.24,
     amplitude_column="amp_28",
     absolute_range=(-60.0, 20.0),
+    scale="VSMOW-SLAP",
+    element_symbol="O",
 )
 
 CARBON_13C = SystemConfig(
@@ -153,4 +163,6 @@ CARBON_13C = SystemConfig(
     method_precision=0.15,
     amplitude_column="amp_44",
     absolute_range=(-100.0, 50.0),
+    scale="VPDB",
+    element_symbol="C",
 )
