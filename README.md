@@ -7,14 +7,27 @@
 
 ## Key Features
 
-*   **Batch-Centric Workflow:** Manage an entire analytical sequence as a single `Batch` object.
-*   **Canonical CF-IRMS Order of Operations:** Automatically enforces the metrologically sound sequence of pre-calibration corrections (**Exclusions → Memory Correction → Blank Correction → Linearity Correction → Drift Correction → Scale Normalization**), regardless of the order in which methods are invoked.
-*   **Full-Pipeline Kragten Uncertainty & Budget Breakdown:** Propagates replicate repeatability (or instrumental method precision), reference material uncertainties, multi-point OLS excess lack-of-fit with leverage ($s_{\text{excess}}$), and pre-calibration uncertainties (`u_blank`, `u_linearity`, `u_drift`) with a complete variance percentage breakdown (`batch.uncertainty_budget`).
-*   **Water Carryover & Elemental Composition (%C, %N, C/N atomic):** Built-in Gröning (2011) sample-to-sample memory correction (`apply_memory_correction`), first-$k$ injection filtering (`exclude_first_injections`), and elemental mass fraction calibration (`calibrate_elemental_composition`).
-*   **Rigorous QA/QC & Long-Term Shewhart Control Charts:** Automated checks for missing sample peaks, double drops, peak-area anomalies, small-$N$ median-based flyer pinpointing, scale extrapolation alerts, ISO 17025 $E_n$ trueness scores, and longitudinal laboratory QC tracking (`QualityControlLog`).
-*   **External Sample Metadata Integration:** Easily merge contextual sample metadata (field sites, coordinates, sampling depths) via `batch.join_metadata()`.
-*   **Comprehensive Standards Registry:** Pre-loaded IAEA, USGS, and NIST reference materials (VSMOW2, SLAP2, GISP, USGS32/34/35/40/41a/45–48/61–63, IAEA-N-1/N-2/NO-3/600/603/CH-6, NBS18/19, NIST8541, SRM1649a, Benzoic Acid, Acetanilide) with case-insensitive alias matching and custom registration via `register_standard()`.
-*   **ISO 17025 Audit Reporting:** Export multi-sheet Excel workbooks (`.save_report()`) and standalone interactive Plotly HTML audit reports for single-isotope (`.save_html_report(..., offline=True)`), dual-isotope (`generate_dual_isotope_html_report()`), and Shewhart control chart (`save_shewhart_html()`) workflows.
+- **Batch-Centric Architecture**  
+  Encapsulates raw data, sequence corrections, and diagnostic audits in a single reproducible `Batch` object.
+
+- **Canonical CF-IRMS Correction Pipeline**  
+  Enforces the physical order of operations deterministically regardless of execution order:  
+  `Exclusions` $\rightarrow$ `Memory` $\rightarrow$ `Blank` $\rightarrow$ `Linearity` $\rightarrow$ `Linear Drift` $\rightarrow$ `Scale Normalization`.
+
+- **Rigorous Kragten Uncertainty Propagation**  
+  Propagates sample repeatability, certified anchor uncertainties, multi-point calibration lack-of-fit leverage ($s_{\text{excess}}$), and pre-calibration variance into a full percentage budget (`batch.uncertainty_budget`).
+
+- **Automated QA/QC & Trueness Diagnostics**  
+  Automated detection for missing sample peaks, autosampler double drops, peak-area anomalies, and small-$N$ replicate flyer pinpointing, alongside ISO 17025 $E_n$ scores and longitudinal Shewhart control charts (`QualityControlLog`).
+
+- **Water Isotope & Elemental Models**  
+  Gröning memory carryover correction and first-$k$ injection filtering for water ($\delta^2\text{H}$, $\delta^{18}\text{O}$), plus elemental %C, %N, and atomic C/N calibration for solid EA-IRMS.
+
+- **Standards Registry & Metadata Integration**  
+  Pre-loaded IAEA, USGS, and NIST standards database with case-insensitive alias matching and seamless external field metadata joining (`batch.join_metadata()`).
+
+- **ISO 17025 Audit Reporting**  
+  Generates multi-sheet Excel workbooks (`.save_report()`) and standalone interactive Plotly HTML dashboards for single- and dual-isotope workflows with offline air-gapped support (`offline=True`).
 
 ## Installation
 
