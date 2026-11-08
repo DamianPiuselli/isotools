@@ -101,3 +101,55 @@ By default (`batch.process(strategy, use_method_precision=False)`):
 -   Sample and anchor measurement uncertainties are taken as the empirical **Standard Error of the Mean (SEM)** of their replicates ($s / \sqrt{n}$).
 -   If a sample has only a single replicate ($n = 1$), `isotools` automatically falls back to the configured instrumental repeatability (`config.method_precision`) and logs a diagnostic notice in `batch.alerts`.
 -   If `use_method_precision=True` is passed to `batch.process()`, all sample and anchor measurement uncertainties use $\sigma_{\text{method}} / \sqrt{n}$.
+
+## Elemental Composition Uncertainty (`calibrate_elemental_composition`)
+
+For weighed solid samples analyzed by EA-IRMS, `batch.calibrate_elemental_composition()` calculates the instrumental response factor $k$ (mg of element per $\text{V s}$ of peak area) by fitting standard elemental mass against integrated peak area through the origin:
+
+$$
+k = \frac{\sum_{i=1}^{N_{\text{std}}} A_i \times M_i}{\sum_{i=1}^{N_{\text{std}}} A_i^2}
+$$
+
+where $M_i = \text{Amount}_i \times (w_i / 100)$ is the certified mass of carbon or nitrogen in calibration standard $i$.
+
+The total relative uncertainty of the response factor $u_{\text{rel}}(k)$ combines replicate variation across standards and the certified uncertainty of the reference material's mass fraction (`ReferenceMaterial.u_mass_fraction`) in quadrature:
+
+$$
+u_{\text{rel}}(k) = \sqrt{u_{\text{rel,rep}}^2 + u_{\text{rel,cert}}^2}
+$$
+
+For each sample group, the combined standard uncertainty of the elemental weight percent $u(w_{\text{sample}})$ combines the empirical sample replicate SEM and calibration response factor uncertainty:
+
+$$
+u(w_{\text{sample}}) = \sqrt{\text{SEM}^2(w) + \left(w_{\text{sample}} \times u_{\text{rel}}(k)\right)^2}
+$$
+
+## Dual-Isotope Derived Uncertainties
+
+When combining two isotopic dimensions in `generate_dual_isotope_html_report()`, secondary geochemical tracers are calculated with full first-order Taylor series error propagation:
+
+### 1. Deuterium Excess ($d\text{-excess}$)
+In meteoric water analysis ($\delta^{2}\text{H}$ and $\delta^{18}\text{O}$):
+
+$$
+d = \delta^{2}\text{H} - 8 \times \delta^{18}\text{O}
+$$
+
+Assuming covariance between independently normalized hydrogen and oxygen analytical batches is negligible ($\text{cov} \approx 0$):
+
+$$
+u(d) = \sqrt{u^2(\delta^{2}\text{H}) + 64 \times u^2(\delta^{18}\text{O})}
+$$
+
+### 2. Atomic $\text{C/N}$ Ratio ($\text{C/N}_{\text{atomic}}$)
+In organic matter and particulate ecology ($\text{\%C}$ and $\text{\%N}$):
+
+$$
+\text{C/N}_{\text{mass}} = \frac{w_{\text{C}}}{w_{\text{N}}}, \quad \text{C/N}_{\text{atomic}} = \frac{w_{\text{C}}}{w_{\text{N}}} \times \frac{14.0067}{12.011}
+$$
+
+Propagating the elemental uncertainties:
+
+$$
+u(\text{C/N}_{\text{atomic}}) = \text{C/N}_{\text{atomic}} \times \sqrt{\left(\frac{u(w_{\text{C}})}{w_{\text{C}}}\right)^2 + \left(\frac{u(w_{\text{N}})}{w_{\text{N}}}\right)^2}
+$$

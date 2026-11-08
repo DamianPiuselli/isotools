@@ -58,7 +58,7 @@ Each `ReferenceMaterial` is defined with:
 
 ## Aliasing and Matching
 
-When you register standards on a `Batch` (e.g., `batch.set_anchors(["USGS40", "USGS41a"])`), `isotools` resolves each name against the registry for the batch's `config.target_column`. During processing, `ReferenceMaterial.matches()` performs a case-insensitive, whitespace-trimmed lookup against the standard's canonical `name` and all of its `aliases`, grouping all matching rows under the canonical name.
+When you register standards on a `Batch` (e.g., `batch.set_anchors(["USGS40", "USGS41a"])` or passing `ReferenceMaterial` objects directly), `isotools` resolves each name against the registry for the batch's `config.target_column`. During processing, `ReferenceMaterial.matches()` performs a case-insensitive, whitespace-trimmed lookup against the standard's canonical `name` and all of its `aliases`, grouping all matching rows under the canonical name.
 
 ## Roles of Standards in a Batch
 
@@ -66,7 +66,9 @@ A reference material can play three distinct roles in a `Batch`:
 
 1.  **Anchors (`batch.set_anchors`):** Used to fit the calibration curve (`SinglePointOffset`, `TwoPointLinear`, or `MultiPointLinear`).
 2.  **Controls (`batch.set_controls`):** Treated as unknowns during calibration. Afterward, `batch.qaqc` compares their calibrated mean against `d_true` to evaluate analytical **bias (trueness)**, calculate the normalized error score $E_n$, and verify whether $E_n \le 1.0$ (`Within_Unc`).
-3.  **Drift Monitors (`batch.set_drift_monitors`):** Replicates of a homogeneous standard spaced throughout the sequence used by `batch.check_drift()` and `batch.apply_drift_correction()` to quantify and remove temporal instrument drift.
+3.  **Drift Monitors (`batch.set_drift_monitors`):** Replicates of a homogeneous standard spaced throughout the sequence used by `batch.check_drift()` and `batch.apply_drift_correction()` to quantify and remove temporal instrument drift. In `batch.summary` and `batch.report`, drift monitors are automatically grouped and reported under their resolved canonical standard name.
+
+Both string identifiers (e.g., `"USGS34"`) and instantiated `ReferenceMaterial` objects can be passed directly to `batch.set_anchors()`, `batch.set_controls()`, and `batch.set_drift_monitors()`.
 
 ## Adding Custom Standards
 

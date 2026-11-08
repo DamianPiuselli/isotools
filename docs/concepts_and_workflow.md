@@ -20,6 +20,7 @@ $$
 $$
 
 *   Memory coefficients $[m_1, m_2, \dots]$ can be supplied manually or estimated automatically (`coefficients=None`) from large step transitions between standards in the sequence.
+*   **Physical Sequence Tracking:** Injection indexing $j$ within each vial block is determined strictly across the physical sequence order prior to exclusion filtering. If an operator excludes an earlier injection (e.g., injection 1 was flagged for air leakage), subsequent injections retain their true physical carryover index (e.g., injection 2 remains indexed as $j=1$ with coefficient $m_1$) rather than artificially shifting coefficients onto later, stable injections.
 
 ### Stage 1 — Blank Correction (`apply_blank_correction`)
 
@@ -30,6 +31,7 @@ A_{\text{net}} = A_{\text{raw}} - \bar{A}_{\text{blk}}, \quad \delta_{\text{blan
 $$
 
 *   Applied before linearity because background contamination disproportionately shifts smaller peaks and would otherwise masquerade as an artificial linearity effect.
+*   **Blank-Row Isolation:** Rows matching the active blank identifier are protected from self-subtraction ($A_{\text{net}} = \bar{A}_{\text{blk}} - \bar{A}_{\text{blk}} = 0$, which would yield $0 / 0 = \text{NaN}$). Furthermore, blank rows are automatically isolated so they do not contaminate the unknown sample results summary, client reports, or downstream `linearity_area_ref` calculations.
 
 ### Stage 2 — Linearity Correction (`apply_linearity_correction`)
 
@@ -58,7 +60,22 @@ $$
 
 `Batch` manages Stages 0–3 declaratively via an internal `_recompute_working_values()` pipeline. Even if you call `apply_drift_correction()`, `apply_linearity_correction()`, `apply_blank_correction()`, `apply_memory_correction()`, or `exclude_rows()` out of order—or re-run one with updated parameters—`isotools` automatically recomputes the entire chain in the canonical **Exclusions → Memory → Blank → Linearity → Drift** order without ever double-correcting or overwriting earlier stages.
 
-## QA/QC Diagnostics & Small-$N$ Replicate Outlier Philosophy
+## QA/QC Diagnostics & Outlier Detection Suite
+
+Automated outlier detection is critical for defending data integrity under ISO/IEC 17025. In `isotools`, `batch.detect_outliers()` runs automatically upon batch instantiation and is refreshed after `_recompute_working_values()` and `process()`. All detected anomalies are logged to `batch.alerts` without modifying raw data.
+
+The diagnostic engine evaluates six distinct failure modes:
+
+1.  **Missing Sample Peak / Autosampler Drop Failure:** When an autosampler misfires or a capsule fails to drop into the combustion tube, the expected peak row is absent from the filtered dataset. `isotools` tracks row sequences through the ingestion reader and flags missing rows alongside the preceding sample identifier.
+2.  **Double Drop & Abnormal Response Factor Checks:**
+    -   *Weighed runs (Amount present):* Evaluates the response factor $R = \text{Area} / \text{Amount}$. If $R > 1.5 \times \text{median}(R)$ and immediately follows a missing peak row, it is flagged as a `Double Drop Suspected`. If not preceded by a missing peak, it is flagged as an `Abnormal Area/Amount Ratio`.
+    -   *Unweighed runs (Amount absent, e.g. liquid water):* In unweighed sequences, peak area reflects nominal injection volume. Injections with peak area $< 0.5 \times \text{median}(\text{Area})$ or $> 1.5 \times \text{median}(\text{Area})$ are flagged as `Abnormal Peak Area` (suspected double injection or syringe partial-clog).
+3.  **Range & Anchor Scale Extrapolation Checks:**
+    -   *Absolute Range Check:* Replicates outside the physically expected natural abundance span configured in `SystemConfig.absolute_range` are flagged.
+    -   *Scale Extrapolation Alert:* Following normalization (`process()`), any sample or control whose mean calibrated delta lies outside the span $[\min(\delta_{\text{true,anchor}}), \max(\delta_{\text{true,anchor}})]$ of the registered calibration anchors is flagged with a `Scale Extrapolation` warning.
+4.  **Small-$N$ Replicate Repeatability & Flyer Pinpointing:** Samples exhibiting standard deviation $\text{SD} > 3 \times \sigma_{\text{method}}$ are flagged for operator review.
+5.  **Signal Amplitude Outliers:** Replicates whose major beam amplitude falls below $50\%$ or exceeds $200\%$ of the sequence median are flagged (`Amplitude Anomaly`).
+6.  **Single-Replicate Fallback Notice:** Samples with only one valid replicate ($n = 1$) cannot compute empirical SEM; `isotools` automatically assigns the instrument method precision ($\sigma_{\text{method}}$) and logs an informative notice.
 
 ### Why Classical Outlier Tests Fail for Routine CF-IRMS ($n = 2\text{--}4$)
 Classical parametric outlier tests such as **Grubbs' test** or **Dixon's Q-test** estimate sample variance purely from the internal replicate spread ($s$) of a single sample group. In routine CF-IRMS analysis, samples are typically measured in duplicates or triplicates ($n = 2\text{--}4$). At $n = 3$ ($\text{df} = 1$), a single anomalous injection inflates the group standard deviation $s$ so severely that the test statistic $|x_i - \bar{x}| / s$ is mathematically bounded ($\le 1.155$), giving Grubbs' test near-zero statistical power unless the outlier is dozens of standard deviations away.
@@ -67,15 +84,32 @@ Instead, `isotools` uses the known long-term **instrumental method repeatability
 -   When a sample group's standard deviation exceeds $3 \times \sigma_{\text{method}}$ and $n \ge 3$, `detect_outliers()` compares each replicate against the **group median** (which is robust against a single flyer for $n \ge 3$) and pinpoints any replicate with $|x_i - \text{median}(x)| > 3 \times \sigma_{\text{method}}$ directly in the alert reason (`Suspected flyer: Row X`).
 -   When $n = 2$, the median equals the mean, making it mathematically impossible to distinguish which of the two replicates is the flyer from $\delta$ values alone; `isotools` flags both rows for operator review alongside amplitude and area/weight response diagnostics.
 
-### Scale Extrapolation & $E_n$ Trueness Scores
--   **Scale Extrapolation Alerts:** After `.process()`, any unknown sample or control whose calibrated $\delta$ value lies outside the $[\min(\delta_{\text{true,anchor}}), \max(\delta_{\text{true,anchor}})]$ span of the active calibration anchors is flagged in `batch.alerts` (`Scale Extrapolation`).
--   **Normalized Error ($E_n$) Score:** In `batch.qaqc`, control standards are evaluated using the ISO/IEC 17025 proficiency testing $E_n$ score (at $k = 2$, ~95% confidence):
+### Normalized Error ($E_n$) Trueness Scores
+In `batch.qaqc`, control standards are evaluated using the ISO/IEC 17025 proficiency testing $E_n$ score (at $k = 2$, ~95% confidence):
 
 $$
 E_n = \frac{|\delta_{\text{measured}} - \delta_{\text{true}}|}{2 \times \sqrt{u_{\text{combined}}^2 + u_{\text{true}}^2}}
 $$
 
 A control standard passes trueness verification (`Within_Unc == True`) when $E_n \le 1.0$.
+
+## External Sample Metadata Integration (`join_metadata`)
+
+Analytical batches often require correlation with field metadata (sampling dates, GPS coordinates, soil horizons, catchment IDs). Rather than merging spreadsheets manually after export, `batch.join_metadata()` incorporates external metadata directly into the batch lifecycle:
+
+```python
+import pandas as pd
+
+meta_df = pd.DataFrame({
+    "sample_name": ["Sample_01", "Sample_02"],
+    "Site": ["Patagonia", "Pampa"],
+    "Depth_cm": [15, 30],
+})
+
+batch.join_metadata(meta_df, on="sample_name")
+```
+
+The metadata columns are automatically attached to `batch.replicates`, `batch.summary`, `batch.report`, exported Excel workbooks, and HTML reports without interfering with internal calibration grouping or anchor matching.
 
 ## Long-Term Laboratory QA/QC Tracking (`QualityControlLog`)
 
@@ -97,9 +131,10 @@ qc_log.save_shewhart_html("USGS35", "USGS35_Shewhart_Chart.html")
 ## Reporting & Traceability
 
 Once `.process()` has been executed:
--   `batch.report`: Returns a clean summary DataFrame with normalized $\delta$ values, combined standard uncertainties (`combined_uncertainty`), replicate counts (`count`), and elemental weight percents (`weight_pct_C`, `u_weight_pct_C`, etc., if calibrated).
+-   `batch.report`: Returns a clean summary DataFrame with normalized $\delta$ values, combined standard uncertainties (`combined_uncertainty`), replicate counts (`count`), and elemental weight percents (`weight_pct_C`, `u_weight_pct_C`, etc., if calibrated), rounded to 2 decimal places.
+-   `batch.get_report(round_decimals=None)`: Returns unrounded floating-point data for custom mathematical processing, avoiding cumulative round-off bias.
+-   `batch.qaqc`: Returns a trueness verification table comparing calibrated **Control** standards against their certified values (`True_Value`, `u_True`, `Bias`, `En_Score`, `Within_Unc`). Call `batch.get_qaqc(round_decimals=None)` for full floating-point precision.
 -   `batch.uncertainty_budget`: Returns the variance percentage breakdown (`pct_measurement`, `pct_anchors`, `pct_fit_residual`, `pct_blank`, `pct_linearity`, `pct_drift`) for every group.
--   `batch.qaqc`: Returns a trueness verification table comparing calibrated **Control** standards against their certified values (`True_Value`, `u_True`, `Bias`, `En_Score`, `Within_Unc`).
 -   `batch.save_report("report.xlsx")`: Exports `Results`, `QAQC`, `Uncertainty_Budget`, and `Parameters` sheets to an Excel workbook.
--   `batch.save_html_report("report.html")`: Generates a standalone, interactive ISO 17025 HTML report containing the processing lineage audit, diagnostic alert logs, interactive Plotly graphs, uncertainty budget table, and sortable tables.
--   `generate_dual_isotope_html_report(batch1, batch2, "dual_report.html")`: Combines two processed batches (e.g., $\delta^{2}\text{H}$ and $\delta^{18}\text{O}$ in water with $d\text{-excess}$ and GMWL/LMWL fits, or $\delta^{13}\text{C}$ and $\delta^{15}\text{N}$ with $\text{C/N}_{\text{atomic}}$ ratios) into a unified HTML dashboard.
+-   `batch.save_html_report("report.html", offline=False)`: Generates a standalone, interactive ISO 17025 HTML report containing the processing lineage audit, diagnostic alert logs, interactive Plotly graphs, uncertainty budget table, and sortable tables. Set `offline=True` to embed the Plotly JavaScript library directly into the file for air-gapped laboratory workstations without internet access.
+-   `generate_dual_isotope_html_report(batch1, batch2, "dual_report.html", offline=False)`: Combines two processed batches (e.g., $\delta^{2}\text{H}$ and $\delta^{18}\text{O}$ in water with $d\text{-excess}$ and GMWL/LMWL fits, or $\delta^{13}\text{C}$ and $\delta^{15}\text{N}$ with $\text{C/N}_{\text{atomic}}$ ratios) into a unified HTML dashboard.

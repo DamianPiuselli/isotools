@@ -9,10 +9,13 @@ For general information and installation instructions, see [README.md](README.md
 ## 2. Core Architectural Roles
 When working in a team or as an individual agent, tasks are typically split into the following functional roles:
 
+> [!NOTE]
+> If your task is **processing raw data files or writing user analysis scripts** using `isotools`, refer directly to the procedural runbook skill at [`.agents/skills/isotools-data-processing/SKILL.md`](.agents/skills/isotools-data-processing/SKILL.md). The sections below are for developers **maintaining or extending the library codebase**.
+
 ### A. Data Ingestion Specialist
 *   **Focus:** Reading, parsing, and validating raw spectrometer Excel files.
 *   **Core Files:**
-    *   `isotools/utils/readers.py`: Contains the `IsodatReader` which handles loading and header validation.
+    *   `isotools/utils/readers.py`: Contains the `IsodatReader` which handles loading, header validation, and numeric coercion.
     *   `isotools/config.py`: Contains `SystemConfig` definition (including `scale` and `element_symbol`) and isotopic system column mappings (`NITROGEN`, `WATER_H`, `WATER_O`, `CARBON_13C`).
 *   **Key Rules:**
     *   All raw file column validations must fail gracefully with descriptive error messages.
@@ -21,11 +24,12 @@ When working in a team or as an individual agent, tasks are typically split into
 ### B. Calibration & Mathematical Strategy Engineer
 *   **Focus:** Implementing pre-calibration corrections and calibration models to normalize raw machine delta values to international standards scales.
 *   **Core Files:**
-    *   `isotools/core.py`: Enforces the canonical CF-IRMS order of operations (`0. Exclusions & First-k Injection Filter -> 0b. Memory Correction -> 1. Blank Correction -> 2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization & Elemental Composition`) via `Batch._recompute_working_values()`.
+    *   `isotools/core.py`: Enforces the canonical CF-IRMS order of operations (`0. Exclusions & First-k Injection Filter -> 0b. Memory Correction -> 1. Blank Correction -> 2. Linearity Correction -> 3. Drift Correction -> 4. Scale Normalization & Elemental Composition`) via `Batch._recompute_working_values()`. Also manages `Batch.join_metadata()`.
     *   `isotools/strategies/normalization.py`: Contains `TwoPointLinear`, `MultiPointLinear`, and `SinglePointOffset`.
 *   **Key Rules:**
     *   Any new calibration strategy must subclass `CalibrationStrategy` from `isotools/strategies/abstract.py`.
     *   Calibration fits are fitted using the `working_value` column of registered anchors.
+    *   For multi-anchor calibrations ($K \ge 3$), ensure `MultiPointLinear` uses orthogonal excess lack-of-fit variance ($s_{\text{excess}}^2$) with inverse-regression leverage to avoid double-counting anchor measurement and certificate uncertainties.
 
 ### C. Metrologist & Uncertainty Auditor
 *   **Focus:** Scientific error propagation, uncertainty budgets, and quality control (QA/QC).
@@ -36,16 +40,17 @@ When working in a team or as an individual agent, tasks are typically split into
     *   `isotools/qaqc_log.py`: Contains `QualityControlLog` for longitudinal laboratory QA/QC logging and Shewhart control chart generation.
 *   **Key Rules:**
     *   Ensure all calibration strategies implement `.propagate()` using `propagate_kragten_budget` so `batch.uncertainty_budget` captures measurement, anchor, OLS fit residual ($s_{y/x}$), blank, linearity, and drift variance contributions.
-    *   Maintain strict checks for outlier flagging (missing sample peak, double drop response factor, small-$N$ median-based replicate flyer pinpointing, scale extrapolation alerts, range, amplitude, and $n=1$ fallback).
+    *   Maintain strict checks for outlier flagging (missing sample peak, double drop response factor, unweighed peak-area anomaly, small-$N$ median-based replicate flyer pinpointing, scale extrapolation alerts, range, amplitude, and $n=1$ fallback).
 
 ### D. Reporting & Visualization Specialist
 *   **Focus:** Exporting analysis summaries to Excel and generating interactive dashboards.
 *   **Core Files:**
-    *   `isotools/reporting/html.py`: Handles Plotly graph creation and Jinja2 HTML rendering (`generate_html_report` and `generate_dual_isotope_html_report`, including $d\text{-excess}$ and $\text{C/N}_{\text{atomic}}$).
+    *   `isotools/reporting/html.py`: Handles Plotly graph creation and Jinja2 HTML rendering (`generate_html_report` and `generate_dual_isotope_html_report`, including $d\text{-excess}$ and $\text{C/N}_{\text{atomic}}$). Supports `offline=True` for self-contained Plotly JS embedding.
     *   `isotools/reporting/excel.py`: Handles multi-sheet Excel export (`export_batch_to_excel` with `Results`, `QAQC`, `Uncertainty_Budget`, and `Parameters` sheets).
-    *   `isotools/core.py`: Contains the `Batch` class with `.save_report()` and `.save_html_report()` endpoints.
+    *   `isotools/core.py`: Contains the `Batch` class with `.save_report()`, `.save_html_report()`, `.get_report(round_decimals=None)`, and `.get_qaqc(round_decimals=None)` endpoints.
 *   **Key Rules:**
     *   Keep HTML reports fully standalone (embed Plotly graphs using non-binary HTML injection).
+    *   Always use unrounded floating-point data (`get_report(round_decimals=None)`) for downstream calculations (such as $d\text{-excess}$ and `QualityControlLog`) to avoid cumulative rounding errors.
     *   Separate metadata, results, uncertainty budgets, and QA/QC data into structured sheets in the Excel exporter.
 
 ## 3. General Development Guidelines for Agents
