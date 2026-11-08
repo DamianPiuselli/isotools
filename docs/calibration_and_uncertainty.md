@@ -35,13 +35,25 @@ $$
 ### 3. Multi-Point Linear OLS (`MultiPointLinear`)
 For analytical sequences with $K \ge 3$ anchor standards, Ordinary Least Squares (OLS) regression is used to fit $\delta_{\text{meas}}$ against $\delta_{\text{true}}$ across all registered anchors.
 
-In addition to the measurement and certified uncertainties of the anchors, `MultiPointLinear` incorporates the **OLS calibration fit residual standard error** ($s_{y/x}$) with $K - 2$ degrees of freedom:
+In addition to propagating the measurement and certified uncertainties of the anchors via Kragten perturbation, `MultiPointLinear` evaluates the **OLS calibration fit residual standard error** ($s_{y/x}$) with $K - 2$ degrees of freedom:
 
 $$
 s_{y/x} = \sqrt{\frac{\sum_{i=1}^{K} \left(\bar{\delta}_{\text{meas},i} - (m \times \delta_{\text{true},i} + b)\right)^2}{K - 2}}
 $$
 
-Propagating the fit residual uncertainty ($s_{y/x} / (|m| \times \sqrt{K})$) ensures that any non-linearity or matrix mismatch among the calibration anchors is reflected in the final uncertainty budget.
+To prevent double-counting the known anchor measurement and certificate uncertainties ($u^2(\bar{\delta}_{\text{meas},i}) + m^2 \times u^2(\delta_{\text{true},i})$) already propagated through the Kragten perturbations, `MultiPointLinear` extracts the **orthogonal excess lack-of-fit variance** ($s_{\text{excess}}^2$, Birge / DerSimonian-Laird estimator):
+
+$$
+s_{\text{excess}}^2 = \max\left(0,\; s_{y/x}^2 - \frac{1}{K}\sum_{i=1}^{K}\left(u^2(\bar{\delta}_{\text{meas},i}) + m^2 \times u^2(\delta_{\text{true},i})\right)\right)
+$$
+
+This excess lack-of-fit variance is then scaled by the inverse-regression calibration leverage at the sample's normalized value $\hat{\delta}_{\text{sample}}$:
+
+$$
+u_{\text{fit}}^2(\hat{\delta}_{\text{sample}}) = \frac{s_{\text{excess}}^2}{m^2} \times \left(\frac{1}{K} + \frac{\left(\hat{\delta}_{\text{sample}} - \bar{\delta}_{\text{true}}\right)^2}{\sum_{i=1}^{K}\left(\delta_{\text{true},i} - \bar{\delta}_{\text{true}}\right)^2}\right)
+$$
+
+When the anchors are mutually consistent within their certified and measurement uncertainties, $s_{\text{excess}}^2 = 0$ and no artificial variance is added. When genuine matrix mismatch or detector non-linearity exists beyond the anchor uncertainties, $u_{\text{fit}}^2$ captures the excess scatter and scales appropriately with distance from the calibration centroid $\bar{\delta}_{\text{true}}$.
 
 ## Full-Pipeline Uncertainty Propagation (The Kragten Method)
 

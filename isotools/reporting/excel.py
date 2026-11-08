@@ -62,7 +62,6 @@ def export_batch_to_excel(batch, filepath: str):
             "Linearity Ref Area": batch.linearity_area_ref if lin_applied else "None",
             "Drift Correction Applied": drift_applied,
             "Drift Monitor Used": batch.drift_monitor_used if drift_applied else "None",
-            "Drift Polynomial Degree": getattr(batch, "drift_degree", 1) if drift_applied else "None",
             "Drift Slope": getattr(batch, "drift_slope", "None") if drift_applied else "None",
             "Drift Slope 95% CI": getattr(batch, "drift_ci95", "None") if drift_applied else "None",
             "Elemental Calibration Applied": elem_applied,

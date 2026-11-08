@@ -125,11 +125,11 @@ def test_calibrate_elemental_composition_and_dual_cn_ratio(mock_read):
     df_c = pd.DataFrame([
         {
             "Row": 1, "Identifier 1": "USGS40", "Peak Nr": 3, "Ampl 44": 2000.0,
-            "d 13C/12C": -26.39, "Area 44": 20.395, "Amount": 1.0,
+            "d 13C/12C": -26.39, "Area 44": 20.410, "Amount": 1.0,
         },
         {
             "Row": 2, "Identifier 1": "USGS40", "Peak Nr": 3, "Ampl 44": 2000.0,
-            "d 13C/12C": -26.39, "Area 44": 40.790, "Amount": 2.0,
+            "d 13C/12C": -26.39, "Area 44": 40.820, "Amount": 2.0,
         },
         {
             "Row": 3, "Identifier 1": "Acetanilide", "Peak Nr": 3, "Ampl 44": 2500.0,

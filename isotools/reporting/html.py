@@ -12,10 +12,8 @@ from PIL import Image
 from scipy import stats as sp_stats
 import plotly.graph_objects as go
 import plotly.io as pio
-from jinja2 import Environment, FileSystemLoader
-
-# Set default plotly template
-pio.templates.default = "plotly_white"
+from plotly.offline import get_plotlyjs
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
 def _get_logo_base64() -> Optional[str]:
@@ -175,6 +173,7 @@ def _create_drift_plot(batch) -> str:  # pylint: disable=too-many-locals,too-man
     y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
 
     fig.update_layout(
+        template="plotly_white",
         autosize=True,
         title=f"Drift Analysis ({batch.config.name} vs Row)",
         xaxis_title="Injection (Row)",
@@ -291,6 +290,7 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
             )
 
         fig.update_layout(
+            template="plotly_white",
             autosize=True,
             title=f"Single-Point Offset Normalization ({batch.config.name})",
             xaxis_title="Injection Sequence (Row)",
@@ -367,6 +367,7 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
     y_pad = (y_max - y_min) * 0.08 if y_max != y_min else 1.0
 
     fig.update_layout(
+        template="plotly_white",
         autosize=True,
         title=f"Calibration Curve: {batch.config.name}",
         xaxis_title=f"Reference Value (True ‰{scale_suffix})",
@@ -388,22 +389,17 @@ def _create_calibration_plot(batch) -> str:  # pylint: disable=too-many-locals
     )
 
 
-def _match_linearity_substance(valid_data: pd.DataFrame, substance: Optional[str]) -> pd.DataFrame:
+def _match_linearity_substance(
+    batch, valid_data: pd.DataFrame, substance: Optional[str]
+) -> pd.DataFrame:
     """Helper to filter replicates matching the linearity reference substance."""
     if not substance:
         return valid_data
-
-    s_lower = substance.strip().lower()
-    mask = valid_data["sample_name"].str.strip().str.lower() == s_lower
-    if not mask.any():
-        ben_tokens = ("ac", "bz", "benzo")
-        s_is_benzo = any(tok in s_lower for tok in ben_tokens)
-        for name in valid_data["sample_name"].unique():
-            n_lower = name.strip().lower()
-            n_is_benzo = any(tok in n_lower for tok in ben_tokens)
-            if s_lower in n_lower or n_lower in s_lower or (s_is_benzo and n_is_benzo):
-                mask = valid_data["sample_name"] == name
-                break
+    if hasattr(batch, "match_substance_rows"):
+        return batch.match_substance_rows(valid_data, substance)
+    mask = valid_data["sample_name"].str.contains(
+        substance, case=False, na=False, regex=False
+    )
     return valid_data[mask] if mask.any() else pd.DataFrame()
 
 
@@ -425,7 +421,7 @@ def _create_linearity_plot(batch) -> str:  # pylint: disable=too-many-locals,too
 
     fig = go.Figure()
     substance = getattr(batch, "linearity_substance_used", None)
-    sub_data = _match_linearity_substance(valid_data, substance)
+    sub_data = _match_linearity_substance(batch, valid_data, substance)
 
     if not sub_data.empty:
         if "pre_linearity_working_value" in sub_data.columns:
@@ -550,6 +546,7 @@ def _create_linearity_plot(batch) -> str:  # pylint: disable=too-many-locals,too
         )
 
     fig.update_layout(
+        template="plotly_white",
         autosize=True,
         title=f"Linearity Dependence ({batch.config.name} vs {area_col})",
         xaxis_title=f"Signal Intensity / Peak Area ({area_col})",
@@ -569,12 +566,15 @@ def _create_linearity_plot(batch) -> str:  # pylint: disable=too-many-locals,too
     )
 
 
-def generate_html_report(batch, filepath: str):
+def generate_html_report(batch, filepath: str, offline: bool = False):
     """
     Renders the Batch data into a standalone HTML report.
     """
     template_dir = os.path.join(os.path.dirname(__file__), "templates")
-    env = Environment(loader=FileSystemLoader(template_dir))
+    env = Environment(
+        loader=FileSystemLoader(template_dir),
+        autoescape=select_autoescape(["html", "xml"]),
+    )
     template = env.get_template("single_isotope.html")
 
     alerts = batch.alerts.to_dict("records") if not batch.alerts.empty else []
@@ -603,59 +603,12 @@ def generate_html_report(batch, filepath: str):
         budget_table_html = None
 
     context = {
+        **_extract_iso_info(batch),
+        "plotly_js_inline": get_plotlyjs() if offline else None,
+        "is_processed": batch.summary is not None,
         "logo_b64": _get_logo_base64(),
-        "system_name": batch.config.name,
-        "scale_name": getattr(batch.config, "scale", ""),
-        "filename": batch.filename,
-        "filepath": batch.filepath,
-        "acquisition_date": batch.acquisition_date,
         "processing_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "target_column": batch.config.target_column,
-        "strategy_name": (
-            batch.strategy.__class__.__name__ if batch.strategy else "Not Processed"
-        ),
-        "anchors": ", ".join(batch.anchors.keys()) if batch.anchors else "None",
-        "controls": ", ".join(batch.controls.keys()) if batch.controls else "None",
-        "drift_monitors": (
-            ", ".join(batch.drift_monitors.keys()) if batch.drift_monitors else "None"
-        ),
-        "excluded_rows": (
-            ", ".join(map(str, batch.excluded_rows_list))
-            if batch.excluded_rows_list
-            else "None"
-        ),
-        "memory_correction_applied": getattr(batch, "memory_correction_applied", False),
-        "memory_info": getattr(batch, "memory_info", None),
-        "blank_correction_applied": batch.blank_correction_applied,
-        "blank_info": batch.blank_info,
-        "drift_correction_applied": batch.drift_correction_applied,
-        "drift_monitor_used": (
-            batch.drift_monitor_used if batch.drift_correction_applied else "None"
-        ),
-        "drift_degree": getattr(batch, "drift_degree", 1),
-        "drift_slope": getattr(batch, "drift_slope", None),
-        "drift_ci95": getattr(batch, "drift_ci95", None),
-        "drift_p_value": getattr(batch, "drift_p_value", None),
-        "drift_r2": getattr(batch, "drift_r2", None),
-        "linearity_correction_applied": getattr(
-            batch, "linearity_correction_applied", False
-        ),
-        "linearity_slope": getattr(batch, "linearity_slope", None),
-        "linearity_ci95": getattr(batch, "linearity_ci95", None),
-        "linearity_p_value": getattr(batch, "linearity_p_value", None),
-        "linearity_r2": getattr(batch, "linearity_r2", None),
-        "linearity_substance_used": getattr(batch, "linearity_substance_used", "None"),
-        "linearity_area_ref": getattr(batch, "linearity_area_ref", None),
-        "linearity_is_direct": getattr(batch, "linearity_is_direct", False),
-        "linearity_source": getattr(
-            batch, "linearity_source", "Inferred from Run Replicates"
-        ),
-        "use_method_precision": getattr(batch, "use_method_precision", False),
-        "method_precision": batch.config.method_precision,
-        "strategy_slope": getattr(batch.strategy, "slope", None),
-        "strategy_intercept": getattr(batch.strategy, "intercept", None),
-        "strategy_r2": getattr(batch.strategy, "r_squared", None),
         "drift_monitors_set": len(batch.drift_monitors) > 0,
         "alerts": alerts,
         "drift_plot_html": _create_drift_plot(batch),
@@ -684,8 +637,16 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
     else:
         b_x, b_y = batch1, batch2
 
-    df_x = b_x.report.copy()
-    df_y = b_y.report.copy()
+    df_x = (
+        b_x.get_report(round_decimals=None)
+        if hasattr(b_x, "get_report")
+        else b_x.report.copy()
+    )
+    df_y = (
+        b_y.get_report(round_decimals=None)
+        if hasattr(b_y, "get_report")
+        else b_y.report.copy()
+    )
 
     col_x = f"corrected_{b_x.config.target_column}"
     col_y = f"corrected_{b_y.config.target_column}"
@@ -699,8 +660,10 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
     standard_names = (
         set(b_x.anchors.keys())
         | set(b_x.controls.keys())
+        | set(b_x.drift_monitors.keys())
         | set(b_y.anchors.keys())
         | set(b_y.controls.keys())
+        | set(b_y.drift_monitors.keys())
     )
     if standard_names:
         merged = merged[~merged.index.isin(standard_names)]
@@ -779,6 +742,7 @@ def _create_dual_isotope_plot(batch1, batch2) -> str:  # pylint: disable=too-man
     scale_y = f" vs. {b_y.config.scale}" if getattr(b_y.config, "scale", "") else ""
 
     fig.update_layout(
+        template="plotly_white",
         autosize=True,
         title=f"Dual Isotope Plot: {b_y.config.name} vs {b_x.config.name}",
         xaxis_title=f"Normalized {b_x.config.target_column} (‰{scale_x})",
@@ -830,7 +794,6 @@ def _extract_iso_info(batch) -> dict:
         "drift_monitor_used": (
             batch.drift_monitor_used if batch.drift_correction_applied else "None"
         ),
-        "drift_degree": getattr(batch, "drift_degree", 1),
         "drift_slope": getattr(batch, "drift_slope", None),
         "drift_ci95": getattr(batch, "drift_ci95", None),
         "drift_p_value": getattr(batch, "drift_p_value", None),
@@ -848,6 +811,10 @@ def _extract_iso_info(batch) -> dict:
         "linearity_source": getattr(
             batch, "linearity_source", "Inferred from Run Replicates"
         ),
+        "elemental_calibration_applied": getattr(
+            batch, "elemental_calibration_applied", False
+        ),
+        "elemental_info": getattr(batch, "elemental_info", None),
         "use_method_precision": getattr(batch, "use_method_precision", False),
         "method_precision": batch.config.method_precision,
         "strategy_slope": getattr(batch.strategy, "slope", None),
@@ -861,35 +828,51 @@ def _compute_dual_derived_columns(
 ) -> pd.DataFrame:
     """Computes d-excess (for 2H/18O) or C/N ratios (when weight_pct_C & weight_pct_N are present)."""
     if "2h" in t1.lower() and "18o" in t2.lower():
-        merged["d_excess"] = (merged[col1] - 8 * merged[col2]).round(2)
+        merged["d_excess"] = merged[col1] - 8.0 * merged[col2]
         u_h = merged[f"combined_uncertainty_{t1}"]
         u_o = merged[f"combined_uncertainty_{t2}"]
-        merged["u_d_excess"] = np.sqrt(u_h**2 + 64 * u_o**2).round(2)
+        merged["u_d_excess"] = np.sqrt(u_h**2 + 64.0 * u_o**2)
     elif "18o" in t1.lower() and "2h" in t2.lower():
-        merged["d_excess"] = (merged[col2] - 8 * merged[col1]).round(2)
+        merged["d_excess"] = merged[col2] - 8.0 * merged[col1]
         u_h = merged[f"combined_uncertainty_{t2}"]
         u_o = merged[f"combined_uncertainty_{t1}"]
-        merged["u_d_excess"] = np.sqrt(u_h**2 + 64 * u_o**2).round(2)
+        merged["u_d_excess"] = np.sqrt(u_h**2 + 64.0 * u_o**2)
 
     if "weight_pct_C" in merged.columns and "weight_pct_N" in merged.columns:
-        valid_n = merged["weight_pct_N"] > 0
+        valid_mn = (merged["weight_pct_C"] > 0) & (merged["weight_pct_N"] > 0)
         cn_mass = np.where(
-            valid_n, merged["weight_pct_C"] / merged["weight_pct_N"], np.nan
+            valid_mn, merged["weight_pct_C"] / merged["weight_pct_N"], np.nan
         )
-        merged["CN_mass_ratio"] = np.round(cn_mass, 2)
-        merged["CN_atomic_ratio"] = np.round(cn_mass * (14.0067 / 12.011), 2)
+        cn_atomic = cn_mass * (14.0067 / 12.011)
+        merged["CN_mass_ratio"] = cn_mass
+        merged["CN_atomic_ratio"] = cn_atomic
+        if "u_weight_pct_C" in merged.columns and "u_weight_pct_N" in merged.columns:
+            rel_u_c = np.where(
+                valid_mn, merged["u_weight_pct_C"] / merged["weight_pct_C"], 0.0
+            )
+            rel_u_n = np.where(
+                valid_mn, merged["u_weight_pct_N"] / merged["weight_pct_N"], 0.0
+            )
+            merged["u_CN_atomic_ratio"] = cn_atomic * np.sqrt(rel_u_c**2 + rel_u_n**2)
 
     return merged
 
 
 def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
-    batch1, batch2, filepath: str, title: str = "Dual Isotope Analytical Report"
+    batch1,
+    batch2,
+    filepath: str,
+    title: str = "Dual Isotope Analytical Report",
+    offline: bool = False,
 ):
     """
     Renders two processed Batch objects into a unified ISO 17025 Dual Isotope HTML report.
     """
     template_dir = os.path.join(os.path.dirname(__file__), "templates")
-    env = Environment(loader=FileSystemLoader(template_dir))
+    env = Environment(
+        loader=FileSystemLoader(template_dir),
+        autoescape=select_autoescape(["html", "xml"]),
+    )
     template = env.get_template("dual_isotope.html")
 
     alerts1 = batch1.alerts.to_dict("records") if not batch1.alerts.empty else []
@@ -901,8 +884,16 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
     combined_alerts = alerts1 + alerts2
 
     if batch1.summary is not None and batch2.summary is not None:
-        r1 = batch1.report.copy()
-        r2 = batch2.report.copy()
+        r1 = (
+            batch1.get_report(round_decimals=None)
+            if hasattr(batch1, "get_report")
+            else batch1.report.copy()
+        )
+        r2 = (
+            batch2.get_report(round_decimals=None)
+            if hasattr(batch2, "get_report")
+            else batch2.report.copy()
+        )
         t1 = batch1.config.target_column
         t2 = batch2.config.target_column
         col1 = f"corrected_{t1}"
@@ -912,6 +903,9 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
             r1, r2, left_index=True, right_index=True, suffixes=(f"_{t1}", f"_{t2}")
         )
         merged = _compute_dual_derived_columns(merged, t1, t2, col1, col2)
+
+        num_cols = merged.select_dtypes(include=[np.number]).columns
+        merged[num_cols] = merged[num_cols].round(2)
 
         merged_df = merged.reset_index()
         merged_df.rename(columns={"group_name": "Sample Identifier"}, inplace=True)
@@ -958,6 +952,7 @@ def generate_dual_isotope_html_report(  # pylint: disable=too-many-locals
         qaqc2_table_html = None
 
     context = {
+        "plotly_js_inline": get_plotlyjs() if offline else None,
         "logo_b64": _get_logo_base64(),
         "title": title,
         "filename": f"{batch1.filename} / {batch2.filename}",

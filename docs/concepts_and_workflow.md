@@ -43,10 +43,10 @@ $$
 
 ### Stage 3 — Drift Correction (`apply_drift_correction`)
 
-*   Compensates for slow, time-dependent changes across the analytical sequence (modeled against injection `row`) using periodically interspersed drift monitor standards. Supports both linear (`degree=1`) and polynomial (`degree=2`, etc.) drift models:
+*   Compensates for slow, time-dependent linear changes across the analytical sequence (modeled against injection `row`) using periodically interspersed drift monitor standards:
 
 $$
-\delta_{\text{drift,corr}} = \delta_{\text{in}} - P_{\text{drift}}(\text{row})
+\delta_{\text{drift,corr}} = \delta_{\text{in}} - m_{\text{drift}} \times \text{row}
 $$
 
 ### Stage 4 — Scale Normalization & Elemental Composition (`process`, `calibrate_elemental_composition`)

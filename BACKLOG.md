@@ -16,10 +16,10 @@
     - Ensure anchor and control standards are aggregated by canonical name in the final report, even if raw names differ.
 
 ## Phase 3: Advanced Features & Metrological Completeness
-- [ ] **Task 6: Metadata Integration**
-    - Add ability to join external sample metadata (site info, coordinates) to the `Batch`.
-- [x] **Task 7: Polynomial Drift & Elemental Composition Models**
-    - Support polynomial drift regression (`apply_drift_correction(..., degree=2)`) and elemental weight percent calibration (`calibrate_elemental_composition()` for $\text{\%C}$, $\text{\%N}$, and $\text{C/N}_{\text{atomic}}$).
+- [x] **Task 6: Metadata Integration**
+    - Add ability to join external sample metadata (site info, coordinates) to the `Batch` via `Batch.join_metadata()`.
+- [x] **Task 7: Elemental Composition Models**
+    - Support elemental weight percent calibration (`calibrate_elemental_composition()` for $\text{\%C}$, $\text{\%N}$, and $\text{C/N}_{\text{atomic}}$).
 - [x] **Task 8: Analytical Corrections (Blank & Linearity)**
     - Implement mass-balance blank correction (`apply_blank_correction`) and signal-intensity linearity evaluation/correction (`check_linearity`, `apply_linearity_correction`).
 - [x] **Task 9: Memory / Carryover Correction & Injection Filtering**

@@ -2,6 +2,7 @@
 Long-term laboratory QA/QC tracking and Shewhart control chart generation.
 """
 
+import html
 import os
 from datetime import datetime
 from typing import Optional
@@ -66,7 +67,10 @@ class QualityControlLog:
         if batch.summary is None:
             raise RuntimeError("Cannot record an unprocessed batch. Call batch.process() first.")
 
-        qaqc_df = batch.qaqc
+        if hasattr(batch, "get_qaqc"):
+            qaqc_df = batch.get_qaqc(round_decimals=None)
+        else:
+            qaqc_df = batch.qaqc
         if qaqc_df.empty:
             return pd.DataFrame(columns=self.COLUMNS)
 
@@ -243,6 +247,7 @@ class QualityControlLog:
         standard_name: str,
         filepath: str,
         target_column: Optional[str] = None,
+        offline: bool = False,
     ):
         """
         Generates a standalone interactive Plotly HTML Shewhart control chart report
@@ -317,14 +322,19 @@ class QualityControlLog:
             height=520,
         )
 
-        plot_div = pio.to_html(fig, full_html=False, include_plotlyjs="cdn")
+        plot_div = pio.to_html(
+            fig, full_html=False, include_plotlyjs=True if offline else "cdn"
+        )
         table_html = hist.to_html(classes="table", border=0, index=False)
+        safe_std = html.escape(str(standard_name))
+        safe_tcol = html.escape(t_col)
+        safe_unit = html.escape(unit_label)
 
         html_doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Shewhart Control Chart - {standard_name}</title>
+    <title>Shewhart Control Chart - {safe_std}</title>
     <style>
         body {{ font-family: system-ui, -apple-system, sans-serif; margin: 2rem; color: #1e293b; }}
         h1, h2 {{ color: #0f172a; }}
@@ -338,9 +348,9 @@ class QualityControlLog:
     </style>
 </head>
 <body>
-    <h1>Long-Term QA/QC Shewhart Control Chart: {standard_name}</h1>
+    <h1>Long-Term QA/QC Shewhart Control Chart: {safe_std}</h1>
     <div class="summary">
-        <strong>Target Parameter:</strong> {t_col} ({unit_label}) &nbsp;|&nbsp;
+        <strong>Target Parameter:</strong> {safe_tcol} ({safe_unit}) &nbsp;|&nbsp;
         <strong>Runs Logged:</strong> {len(hist)} &nbsp;|&nbsp;
         <strong>Certified Value:</strong> {true_val:.2f} ‰ &nbsp;|&nbsp;
         <strong>Lab Mean:</strong> {mean_val:.2f} ‰ &nbsp;|&nbsp;

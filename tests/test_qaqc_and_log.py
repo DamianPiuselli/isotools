@@ -1,7 +1,7 @@
 """
 Tests for Phase 3 (Rigorous QA/QC: En_Score, small-N replicate flyer pinpointing,
-scale extrapolation alerts, polynomial drift degree >= 2) and Phase 6 (QualityControlLog
-and Shewhart control charts).
+scale extrapolation alerts, unweighed area anomaly alerts, metadata integration)
+and Phase 6 (QualityControlLog and Shewhart control charts).
 """
 
 import os
@@ -102,39 +102,57 @@ def test_small_n_replicate_flyer_pinpointing(mock_read):
 
 
 @patch("isotools.utils.readers.pd.read_excel")
-def test_polynomial_drift_correction_degree_2(mock_read):
-    """Verify quadratic (degree=2) drift correction removes non-linear temporal drift."""
+def test_linear_drift_metadata_join_and_area_anomaly(mock_read):
+    """Verify linear drift removal, join_metadata, and unweighed area anomaly flagging."""
     rows_idx = np.arange(1, 10, dtype=float)
-    # Quadratic drift curve: 0.05 * row^2 - 0.2 * row
-    quad_drift = 0.05 * (rows_idx ** 2) - 0.2 * rows_idx
+    # Linear drift curve: +0.15 * row
+    lin_drift = 0.15 * rows_idx
     true_vals = np.array([
         2.7, 10.0, 2.7, 10.0, 2.7, 10.0, 2.7, 10.0, 2.7
     ])
     names = [
         "USGS35", "S1", "USGS35", "S1", "USGS35", "S1", "USGS35", "S1", "USGS35"
     ]
+    # Row 8 has a > 1.5x peak area anomaly (no Amount column present)
+    areas = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 48.0, 20.0]
 
     df = pd.DataFrame({
         "Row": rows_idx.astype(int),
         "Identifier 1": names,
         "Peak Nr": [2] * 9,
         "Ampl 28": [2000.0] * 9,
-        "d 15N/14N": true_vals + quad_drift,
+        "Area All": areas,
+        "d 15N/14N": true_vals + lin_drift,
     })
     mock_read.return_value = df
 
     batch = Batch("dummy.xls", config=NITROGEN)
     batch.set_anchors(["USGS35"])
     batch.set_drift_monitors(["USGS35"])
-    batch.apply_drift_correction("USGS35", degree=2)
+    batch.apply_drift_correction("USGS35")
     batch.process(SinglePointOffset())
 
-    assert batch.drift_degree == 2
-    assert batch.drift_info["degree"] == 2
     assert batch.drift_info["r_squared"] == pytest.approx(1.0, abs=1e-6)
-    # After quadratic drift removal and single-point offset, S1 should be recovered to 10.0 with near-zero SEM
     assert batch.report.loc["S1", "corrected_d15n"] == pytest.approx(10.0, abs=1e-4)
     assert batch.summary.loc["S1", "sem"] == pytest.approx(0.0, abs=1e-4)
+
+    # Verify unweighed peak area anomaly on Row 8 is detected
+    area_alerts = batch.alerts[
+        batch.alerts["reason"].str.contains("Abnormal Peak Area", na=False)
+    ]
+    assert not area_alerts.empty
+    assert 8 in set(area_alerts["row"].tolist())
+
+    # Verify join_metadata enriches both replicates and summary/report
+    meta_df = pd.DataFrame({
+        "sample_name": ["S1"],
+        "Site": ["Patagonia"],
+        "Depth_cm": [15],
+    })
+    batch.join_metadata(meta_df)
+    assert batch.report.loc["S1", "Site"] == "Patagonia"
+    assert batch.report.loc["S1", "Depth_cm"] == 15
+    assert "Site" in batch.replicates.columns
 
 
 @patch("isotools.utils.readers.pd.read_excel")

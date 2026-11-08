@@ -39,14 +39,14 @@ def test_propagate_kragten_budget_linear_function():
 
 
 def test_multipoint_linear_ols_residual_uncertainty():
-    """Verify MultiPointLinear incorporates OLS residual standard error s_y/x when K >= 3."""
+    """Verify MultiPointLinear uses orthogonal excess lack-of-fit variance with leverage."""
     refs = {
         "A1": ReferenceMaterial("A1", -30.0, 0.05),
         "A2": ReferenceMaterial("A2", -15.0, 0.05),
         "A3": ReferenceMaterial("A3", 0.0, 0.05),
     }
 
-    # Collinear points -> s_y/x == 0
+    # 1. Collinear points -> s_y/x == 0 and s_excess == 0
     stats_collinear = pd.DataFrame(
         {"mean": [-30.0, -15.0, 0.0], "sem": [0.02, 0.02, 0.02]},
         index=["A1", "A2", "A3"],
@@ -54,6 +54,7 @@ def test_multipoint_linear_ols_residual_uncertainty():
     strat_collinear = MultiPointLinear()
     strat_collinear.fit(stats_collinear, refs)
     assert strat_collinear.residual_std_err == pytest.approx(0.0, abs=1e-10)
+    assert strat_collinear.excess_std_err == pytest.approx(0.0, abs=1e-10)
 
     summary_collinear = pd.DataFrame(
         {"mean": [-10.0], "sem": [0.05]}, index=["S1"]
@@ -61,7 +62,17 @@ def test_multipoint_linear_ols_residual_uncertainty():
     res_collinear = strat_collinear.propagate(summary_collinear, target_col="d13c")
     assert res_collinear.loc["S1", "pct_fit_residual"] == pytest.approx(0.0, abs=1e-8)
 
-    # Non-collinear anchor points -> s_y/x > 0
+    # 2. Small scatter explained by known anchor uncertainties -> excess_std_err == 0 (no double-counting)
+    stats_within_unc = pd.DataFrame(
+        {"mean": [-30.0, -14.97, 0.0], "sem": [0.02, 0.02, 0.02]},
+        index=["A1", "A2", "A3"],
+    )
+    strat_within = MultiPointLinear()
+    strat_within.fit(stats_within_unc, refs)
+    assert strat_within.residual_std_err > 0.0
+    assert strat_within.excess_std_err == pytest.approx(0.0, abs=1e-10)
+
+    # 3. Genuine lack-of-fit scatter exceeding anchor uncertainties -> excess_std_err > 0 with leverage
     stats_scattered = pd.DataFrame(
         {"mean": [-30.0, -14.2, 0.0], "sem": [0.02, 0.02, 0.02]},
         index=["A1", "A2", "A3"],
@@ -69,13 +80,23 @@ def test_multipoint_linear_ols_residual_uncertainty():
     strat_scattered = MultiPointLinear()
     strat_scattered.fit(stats_scattered, refs)
     assert strat_scattered.residual_std_err > 0.3
+    assert strat_scattered.excess_std_err > 0.3
 
-    res_scattered = strat_scattered.propagate(summary_collinear.copy(), target_col="d13c")
+    summary_leverage = pd.DataFrame(
+        {"mean": [-15.0, 45.0], "sem": [0.05, 0.05]},
+        index=["S_center", "S_extrap"],
+    )
+    res_scattered = strat_scattered.propagate(summary_leverage, target_col="d13c")
     assert (
-        res_scattered.loc["S1", "combined_uncertainty"]
+        res_scattered.loc["S_center", "combined_uncertainty"]
         > res_collinear.loc["S1", "combined_uncertainty"]
     )
-    assert res_scattered.loc["S1", "pct_fit_residual"] > 50.0
+    assert res_scattered.loc["S_center", "pct_fit_residual"] > 20.0
+    # Extrapolated sample has higher leverage than centroid sample
+    assert (
+        res_scattered.loc["S_extrap", "combined_uncertainty"]
+        > res_scattered.loc["S_center", "combined_uncertainty"]
+    )
 
 
 @patch("isotools.utils.readers.pd.read_excel")

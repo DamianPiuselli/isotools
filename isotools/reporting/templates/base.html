@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Isotools Report - {{ system_name if system_name else (title if title else "IRMS Report") }}{% endblock %}</title>
+    {% if plotly_js_inline %}
+    <script>{{ plotly_js_inline | safe }}</script>
+    {% else %}
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    {% endif %}
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -306,6 +310,9 @@
         
         <div class="metadata-item" style="grid-column: 1 / -1; border-top: 1px solid #334155; padding-top: 12px; margin-top: 5px; font-size: 0.88rem; color: #cbd5e1; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
             <strong>Pipeline Setup:</strong>
+            {% if memory_correction_applied %}
+                <span class="badge badge-success">Memory: Applied</span>
+            {% endif %}
             {% if blank_correction_applied %}
                 <span class="badge badge-success">Blank: {{ blank_info.identifier if blank_info else "Applied" }}</span>
             {% else %}
@@ -322,6 +329,10 @@
                 <span class="badge badge-success">Drift: {{ drift_monitor_used }}</span>
             {% else %}
                 <span class="badge badge-danger">Drift: Off</span>
+            {% endif %}
+
+            {% if elemental_calibration_applied and elemental_info %}
+                <span class="badge badge-success">Elemental: %{{ elemental_info.element_symbol }}</span>
             {% endif %}
         </div>
         {% endblock %}

@@ -6,15 +6,29 @@
 <details class="section" open>
     <summary style="cursor: pointer; user-select: none; font-size: 1.3rem; font-weight: 700; color: #1e293b; border-bottom: 2px solid var(--bg); padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
         <span>📋 Processing Decisions & Data Lineage Audit</span>
-        <span class="badge badge-success">Audit Complete</span>
+        {% if is_processed %}
+            <span class="badge badge-success">Audit Complete</span>
+        {% else %}
+            <span class="badge badge-danger">Pending Processing</span>
+        {% endif %}
     </summary>
     
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 15px;">
-        <!-- Stage 1: Exclusions -->
+        <!-- Stage 1: Exclusions & Memory -->
         <div style="background: #f8fafc; padding: 18px; border-radius: 10px; border: 1px solid #e2e8f0;">
-            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">1. Exclusions & Data Cleaning</h3>
+            <h3 style="margin-top: 0; font-size: 1.05rem; color: #1e293b;">1. Exclusions & Carryover</h3>
             <p style="margin: 6px 0; font-size: 0.9rem;"><strong>Excluded Rows:</strong> {{ excluded_rows if excluded_rows else "None" }}</p>
-            <p style="margin: 6px 0; font-size: 0.85rem; color: var(--text-muted);">Manual and diagnostic row exclusions applied prior to calibration.</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Memory Correction:</strong>
+                {% if memory_correction_applied %}
+                    <span class="badge badge-success">Applied</span>
+                {% else %}
+                    <span class="badge badge-danger">Not Applied</span>
+                {% endif %}
+            </p>
+            {% if memory_correction_applied and memory_info %}
+            <p style="margin: 2px 0; font-size: 0.82rem; color: #475569;">• <strong>Coefficients:</strong> {{ memory_info.coefficients }}</p>
+            <p style="margin: 2px 0; font-size: 0.82rem; color: #475569;">• <strong>Source:</strong> {{ memory_info.source }}</p>
+            {% endif %}
         </div>
 
         <!-- Stage 2: Blank Correction -->
@@ -83,6 +97,9 @@
             {% if strategy_slope is not none %}
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>Equation:</strong> Measured = {{ "%.4f"|format(strategy_slope) }} × True + {{ "%.4f"|format(strategy_intercept) }}</p>
             <p style="margin: 4px 0; font-size: 0.85rem;"><strong>R²:</strong> {{ "%.4f"|format(strategy_r2) }}</p>
+            {% endif %}
+            {% if elemental_calibration_applied and elemental_info %}
+            <p style="margin: 6px 0 2px 0; font-size: 0.85rem;"><strong>Elemental Calibration:</strong> <span class="badge badge-success">%{{ elemental_info.element_symbol }} Applied</span></p>
             {% endif %}
         </div>
 

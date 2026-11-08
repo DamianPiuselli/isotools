@@ -6,9 +6,6 @@ import warnings
 import pandas as pd
 from ..config import SystemConfig
 
-# Silence openpyxl warnings about malformed headers/footers in Isodat files
-warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
-
 
 class IsodatReader:
     """
@@ -43,7 +40,9 @@ class IsodatReader:
         """
         # 1. Load Data
         try:
-            df = pd.read_excel(filepath, sheet_name=sheet_name)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+                df = pd.read_excel(filepath, sheet_name=sheet_name)
         except Exception as e:
             raise IOError(f"Failed to read file {filepath}: {e}") from e
 
@@ -91,9 +90,11 @@ class IsodatReader:
         # 4. Rename Columns using Dynamic Case-Insensitive Mapping
         df = df.rename(columns=dynamic_mapping)
 
-        # 5. Standardize Sample Names (String cleanup)
+        # 5. Standardize Sample Names (String cleanup, dropping rows with missing sample_name)
         if "sample_name" in df.columns:
+            df = df[df["sample_name"].notna()].copy()
             df["sample_name"] = df["sample_name"].astype(str).str.strip()
+            df = df[df["sample_name"] != ""].copy()
 
         # 6. Track raw row metadata before filtering
         missing_sample_info = {}
@@ -116,9 +117,23 @@ class IsodatReader:
         else:
             df = self.config.filter_func(df)
 
+        # 6b. Coerce expected numeric columns if stored as object dtype
+        df = self._coerce_numeric_columns(df)
+
         # 7. Apply User Exclusions (Manual Row IDs)
         # Assumes 'row' column exists from Isodat mapping
         if exclude_rows and "row" in df.columns:
             df = df[~df["row"].isin(exclude_rows)]
 
+        return df
+
+    def _coerce_numeric_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Coerces expected numeric measurement columns to float if stored as object dtype."""
+        numeric_targets = [self.config.target_column, self.config.amplitude_column, "amount"]
+        numeric_targets.extend(
+            c for c in df.columns if c.startswith(("area_", "amp_", "r1"))
+        )
+        for col in set(numeric_targets):
+            if col and col in df.columns and df[col].dtype == object:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
         return df

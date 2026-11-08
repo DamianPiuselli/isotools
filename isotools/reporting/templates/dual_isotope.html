@@ -70,6 +70,7 @@
                 System 1: {{ iso1.system_name }}
             </h3>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Excluded Rows:</strong> {{ iso1.excluded_rows if iso1.excluded_rows else "None" }}</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Memory Correction:</strong> {{ "Applied (" ~ iso1.memory_info.coefficients ~ ")" if (iso1.memory_correction_applied and iso1.memory_info) else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Blank Correction:</strong> {{ "Applied (" + iso1.blank_info.identifier + ")" if iso1.blank_correction_applied else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (" + iso1.linearity_substance_used + ")" if iso1.linearity_correction_applied else "Not Applied" }}</p>
             {% if iso1.linearity_correction_applied and iso1.linearity_slope is not none %}
@@ -109,6 +110,7 @@
                 System 2: {{ iso2.system_name }}
             </h3>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Excluded Rows:</strong> {{ iso2.excluded_rows if iso2.excluded_rows else "None" }}</p>
+            <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Memory Correction:</strong> {{ "Applied (" ~ iso2.memory_info.coefficients ~ ")" if (iso2.memory_correction_applied and iso2.memory_info) else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Blank Correction:</strong> {{ "Applied (" + iso2.blank_info.identifier + ")" if iso2.blank_correction_applied else "Not Applied" }}</p>
             <p style="margin: 6px 0; font-size: 0.85rem;"><strong>Linearity Correction:</strong> {{ "Applied (" + iso2.linearity_substance_used + ")" if iso2.linearity_correction_applied else "Not Applied" }}</p>
             {% if iso2.linearity_correction_applied and iso2.linearity_slope is not none %}

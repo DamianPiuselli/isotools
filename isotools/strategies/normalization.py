@@ -166,6 +166,7 @@ class MultiPointLinear(CalibrationStrategy):
         super().__init__()
         self.anchors_data = []
         self.residual_std_err = 0.0
+        self.excess_std_err = 0.0
 
     def fit(self, anchor_stats: pd.DataFrame, refs: Dict[str, ReferenceMaterial]):
         """Fits the multi-point linear model using OLS."""
@@ -205,8 +206,19 @@ class MultiPointLinear(CalibrationStrategy):
             x_arr = np.array(x_raw, dtype=float)
             residuals = x_arr - (self.slope * y_arr + self.intercept)
             self.residual_std_err = float(np.sqrt(np.sum(residuals**2) / (len(x_raw) - 2)))
+            expected_var = float(
+                np.mean(
+                    [
+                        a["raw_sem"] ** 2 + (self.slope * a["true_unc"]) ** 2
+                        for a in self.anchors_data
+                    ]
+                )
+            )
+            excess_var = max(0.0, self.residual_std_err**2 - expected_var)
+            self.excess_std_err = float(np.sqrt(excess_var))
         else:
             self.residual_std_err = 0.0
+            self.excess_std_err = 0.0
 
     def apply(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         """Vectorized correction for row-level data."""
@@ -215,7 +227,10 @@ class MultiPointLinear(CalibrationStrategy):
         return df
 
     def propagate(self, summary_df: pd.DataFrame, target_col: str) -> pd.DataFrame:
-        """Runs Kragten propagation and includes OLS residual fit scatter."""
+        """
+        Runs Kragten propagation and includes orthogonal excess lack-of-fit scatter
+        with inverse-regression calibration leverage.
+        """
         var_meas_list = []
         var_anchors_list = []
         var_fit_list = []
@@ -237,11 +252,23 @@ class MultiPointLinear(CalibrationStrategy):
             return (r_s - b) / m
 
         n_anc = len(self.anchors_data)
-        fit_var_const = (
-            (self.residual_std_err / (abs(self.slope) * np.sqrt(n_anc))) ** 2
-            if n_anc >= 3 and self.slope != 0
-            else 0.0
-        )
+        if n_anc >= 3 and self.slope != 0:
+            true_vals = np.array([a["true_val"] for a in self.anchors_data], dtype=float)
+            t_mean = float(np.mean(true_vals))
+            s_tt = float(np.sum((true_vals - t_mean) ** 2))
+            expected_var = float(
+                np.mean(
+                    [
+                        a["raw_sem"] ** 2 + (self.slope * a["true_unc"]) ** 2
+                        for a in self.anchors_data
+                    ]
+                )
+            )
+            excess_var = max(0.0, self.residual_std_err**2 - expected_var)
+        else:
+            t_mean = 0.0
+            s_tt = 0.0
+            excess_var = 0.0
 
         for _, row in summary_df.iterrows():
             r_samp = row["mean"]
@@ -255,7 +282,16 @@ class MultiPointLinear(CalibrationStrategy):
             )
             var_meas_list.append(contribs["measurement"])
             var_anchors_list.append(contribs["anchors"])
-            var_fit_list.append(fit_var_const)
+
+            if n_anc >= 3 and self.slope != 0 and excess_var > 0:
+                d_hat = (r_samp - self.intercept) / self.slope
+                leverage = (1.0 / n_anc) + (
+                    ((d_hat - t_mean) ** 2) / s_tt if s_tt > 0 else 0.0
+                )
+                fit_var = (excess_var / (self.slope**2)) * leverage
+            else:
+                fit_var = 0.0
+            var_fit_list.append(float(fit_var))
 
         summary_df = summary_df.copy()
         summary_df[f"corrected_{target_col}"] = (
