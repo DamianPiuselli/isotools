@@ -19,7 +19,7 @@ $$
 \delta_{\text{mem,corr}, i, j} = \delta_{\text{raw}, i, j} + \frac{m_j}{1 - m_j} \times \left(\delta_{\text{raw}, i, j} - \bar{\delta}_{\text{final}, i-1}\right)
 $$
 
-*   Memory coefficients $[m_1, m_2, \dots]$ can be supplied manually or estimated automatically (`coefficients=None`) from large step transitions between standards in the sequence.
+*   Memory coefficients ($m_j$) can be supplied manually or estimated automatically (`coefficients=None`) from large step transitions between standards in the sequence.
 *   **Physical Sequence Tracking:** Injection indexing $j$ within each vial block is determined strictly across the physical sequence order prior to exclusion filtering. If an operator excludes an earlier injection (e.g., injection 1 was flagged for air leakage), subsequent injections retain their true physical carryover index (e.g., injection 2 remains indexed as $j=1$ with coefficient $m_1$) rather than artificially shifting coefficients onto later, stable injections.
 
 ### Stage 1 — Blank Correction (`apply_blank_correction`)
@@ -31,7 +31,13 @@ A_{\text{net}} = A_{\text{raw}} - \bar{A}_{\text{blk}}, \quad \delta_{\text{blan
 $$
 
 *   Applied before linearity because background contamination disproportionately shifts smaller peaks and would otherwise masquerade as an artificial linearity effect.
-*   **Blank-Row Isolation:** Rows matching the active blank identifier are protected from self-subtraction ($A_{\text{net}} = \bar{A}_{\text{blk}} - \bar{A}_{\text{blk}} = 0$, which would yield $0 / 0 = \text{NaN}$). Furthermore, blank rows are automatically isolated so they do not contaminate the unknown sample results summary, client reports, or downstream `linearity_area_ref` calculations.
+*   **Blank-Row Isolation:** Rows matching the active blank identifier are protected from self-subtraction where evaluating net area on the blank itself would produce a zero denominator:
+
+$$
+A_{\text{net}} = A_{\text{raw}} - \bar{A}_{\text{blk}} = 0 \implies \frac{0}{0} = \text{NaN}
+$$
+
+Furthermore, blank rows are automatically isolated so they do not contaminate the unknown sample results summary, client reports, or downstream `linearity_area_ref` calculations.
 
 ### Stage 2 — Linearity Correction (`apply_linearity_correction`)
 
@@ -54,7 +60,11 @@ $$
 ### Stage 4 — Scale Normalization & Elemental Composition (`process`, `calibrate_elemental_composition`)
 
 *   Fits the chosen calibration strategy (`SinglePointOffset`, `TwoPointLinear`, or `MultiPointLinear`) to the cleaned `working_value` of the registered **Anchor** standards, normalizes all replicates to the international scale (`VSMOW-SLAP`, `VPDB`, `AIR-N2`), and propagates full-pipeline combined standard uncertainty via the **Kragten method**.
-*   For weighed solid EA-IRMS runs (`CARBON_13C`, `NITROGEN`), `batch.calibrate_elemental_composition()` uses peak areas and sample weights (`Amount`) against standards with known elemental mass fractions (`mass_fraction`) to compute $\text{\%C}$ (`weight_pct_C`) and $\text{\%N}$ (`weight_pct_N`). When combined in `generate_dual_isotope_html_report()`, mass and molar atomic $\text{C/N}$ ratios ($\text{C/N}_{\text{atomic}} = (\text{\%C} / \text{\%N}) \times (14.0067 / 12.011)$) are automatically calculated.
+*   For weighed solid EA-IRMS runs (`CARBON_13C`, `NITROGEN`), `batch.calibrate_elemental_composition()` uses peak areas and sample weights (`Amount`) against standards with known elemental mass fractions (`mass_fraction`) to compute %C (`weight_pct_C`) and %N (`weight_pct_N`). When combined in `generate_dual_isotope_html_report()`, mass and molar atomic C/N ratios are automatically calculated:
+
+$$
+\text{C/N}_{\text{atomic}} = \frac{\%C}{\%N} \times \frac{14.0067}{12.011}
+$$
 
 ### Deterministic Execution
 
@@ -72,7 +82,7 @@ The diagnostic engine evaluates six distinct failure modes:
     -   *Unweighed runs (Amount absent, e.g. liquid water):* In unweighed sequences, peak area reflects nominal injection volume. Injections with peak area $< 0.5 \times \text{median}(\text{Area})$ or $> 1.5 \times \text{median}(\text{Area})$ are flagged as `Abnormal Peak Area` (suspected double injection or syringe partial-clog).
 3.  **Range & Anchor Scale Extrapolation Checks:**
     -   *Absolute Range Check:* Replicates outside the physically expected natural abundance span configured in `SystemConfig.absolute_range` are flagged.
-    -   *Scale Extrapolation Alert:* Following normalization (`process()`), any sample or control whose mean calibrated delta lies outside the span $[\min(\delta_{\text{true,anchor}}), \max(\delta_{\text{true,anchor}})]$ of the registered calibration anchors is flagged with a `Scale Extrapolation` warning.
+    -   *Scale Extrapolation Alert:* Following normalization (`process()`), any sample or control whose mean calibrated delta lies outside the anchor calibration span $[\min(\delta), \max(\delta)]$ is flagged with a `Scale Extrapolation` warning.
 4.  **Small-$N$ Replicate Repeatability & Flyer Pinpointing:** Samples exhibiting standard deviation $\text{SD} > 3 \times \sigma_{\text{method}}$ are flagged for operator review.
 5.  **Signal Amplitude Outliers:** Replicates whose major beam amplitude falls below $50\%$ or exceeds $200\%$ of the sequence median are flagged (`Amplitude Anomaly`).
 6.  **Single-Replicate Fallback Notice:** Samples with only one valid replicate ($n = 1$) cannot compute empirical SEM; `isotools` automatically assigns the instrument method precision ($\sigma_{\text{method}}$) and logs an informative notice.
@@ -81,7 +91,7 @@ The diagnostic engine evaluates six distinct failure modes:
 Classical parametric outlier tests such as **Grubbs' test** or **Dixon's Q-test** estimate sample variance purely from the internal replicate spread ($s$) of a single sample group. In routine CF-IRMS analysis, samples are typically measured in duplicates or triplicates ($n = 2\text{--}4$). At $n = 3$ ($\text{df} = 1$), a single anomalous injection inflates the group standard deviation $s$ so severely that the test statistic $|x_i - \bar{x}| / s$ is mathematically bounded ($\le 1.155$), giving Grubbs' test near-zero statistical power unless the outlier is dozens of standard deviations away.
 
 Instead, `isotools` uses the known long-term **instrumental method repeatability** ($\sigma_{\text{method}}$, configured in `SystemConfig.method_precision`) as an external reference scale:
--   When a sample group's standard deviation exceeds $3 \times \sigma_{\text{method}}$ and $n \ge 3$, `detect_outliers()` compares each replicate against the **group median** (which is robust against a single flyer for $n \ge 3$) and pinpoints any replicate with $|x_i - \text{median}(x)| > 3 \times \sigma_{\text{method}}$ directly in the alert reason (`Suspected flyer: Row X`).
+-   When a sample group standard deviation exceeds $3 \times \sigma_{\text{method}}$ with $n \ge 3$, `detect_outliers()` compares each replicate against the **group median** (which is robust against a single flyer for $n \ge 3$) and pinpoints suspected flyer rows directly in the alert reason (`Suspected flyer: Row X`).
 -   When $n = 2$, the median equals the mean, making it mathematically impossible to distinguish which of the two replicates is the flyer from $\delta$ values alone; `isotools` flags both rows for operator review alongside amplitude and area/weight response diagnostics.
 
 ### Normalized Error ($E_n$) Trueness Scores
